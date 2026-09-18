@@ -2,42 +2,37 @@
 
 ## M0 — Fundação documental
 
-Status: **em andamento neste PR**.
+Status: **concluído**.
 
 Entregas:
 - objetivo e princípios;
 - arquitetura;
 - Context Engine;
 - modelo de dados;
-- roadmap;
-- backlog inicial.
+- roadmap inicial.
 
 ## M1 — Memória operacional
 
-Objetivo: colocar o Segundo Cérebro em funcionamento sem depender de IA generativa para organizar tudo.
+Status: **concluído**.
 
 Entregas:
-- API FastAPI;
+- FastAPI;
 - PostgreSQL;
 - migrations;
 - CRUD de projetos;
 - CRUD de decisões;
 - CRUD de tarefas;
-- contexto/resumo por projeto;
-- endpoint de snapshot do projeto;
+- resumo por projeto;
+- snapshot consolidado;
 - testes;
-- Docker Compose local.
-
-Critério de aceite:
-- cadastrar projeto;
-- registrar decisão e tarefa;
-- atualizar status/próxima ação;
-- solicitar snapshot e receber estado consolidado.
+- Docker Compose.
 
 ## M2 — Context Engine v1
 
+Status: **concluído**.
+
 Entregas:
-- perfis `minimal`, `standard`, `deep`;
+- perfis `minimal`, `standard` e `deep`;
 - ranking determinístico;
 - deduplicação;
 - orçamento estimado de tokens;
@@ -45,12 +40,9 @@ Entregas:
 - endpoint `/context/build`;
 - endpoint `/projects/{id}/continue`.
 
-Critério de aceite:
-- montar pacote abaixo do orçamento configurado;
-- informar fontes e tokens estimados;
-- produzir contexto suficiente para retomar um projeto.
-
 ## M3 — GitHub Connector
+
+Status: **concluído**.
 
 Entregas:
 - vínculo projeto ↔ repositório;
@@ -60,45 +52,55 @@ Entregas:
 - Issues abertas;
 - Actions recentes;
 - normalização em `events`;
-- sync incremental.
-
-Critério de aceite:
-- `continuar projeto` inclui estado técnico recente sem copiar o repositório inteiro.
+- sync idempotente.
 
 ## M4 — Session Memory
 
-Entregas:
-- `SessionDelta`;
-- decisões detectadas para confirmação;
-- tarefas detectadas para confirmação;
-- resumo incremental;
-- atualização da próxima ação;
-- trilha de origem.
+Status: **concluído**.
 
-Critério de aceite:
-- uma sessão longa é reduzida a um resumo operacional pequeno e reaproveitável.
+Entregas:
+- `SessionDelta` persistente;
+- preview;
+- confirmação humana;
+- decisões e tarefas propostas;
+- conclusão de tarefas existentes;
+- resumo incremental;
+- alteração de status e próxima ação;
+- aplicação transacional;
+- descarte e proteção contra reaplicação.
 
 ## M5 — Interface web
 
+Status: **concluído na branch `codex/m5-web-interface`**.
+
 Entregas:
-- dashboard;
+- dashboard responsivo servido pela FastAPI;
 - projetos ativos;
-- health score;
-- inbox;
-- página de projeto;
-- decisões;
-- tarefas;
-- histórico;
+- Health Score explicável;
+- status e próxima ação;
+- tarefas abertas;
+- fontes e eventos recentes;
 - painel de contexto/tokens;
-- comando `continuar`.
+- comando `continuar`;
+- revisão visual de `SessionDelta`;
+- aplicar/descartar com confirmação explícita;
+- sincronização manual do GitHub;
+- testes da UI e do Health Score.
 
 ## M6 — Google Drive e Calendar
 
-Entregas:
+Status: **próximo marco**.
+
+Objetivo: incorporar contexto documental e temporal sem duplicar arquivos inteiros na memória operacional.
+
+Entregas planejadas:
 - referências de documentos do Drive;
-- recuperação sob demanda;
+- recuperação de trechos sob demanda;
+- metadados e proveniência;
 - prazos/compromissos do Calendar;
-- associação a projetos.
+- associação a projetos;
+- seleção pelo Context Engine;
+- sincronização incremental.
 
 ## M7 — Busca semântica
 
@@ -112,7 +114,7 @@ Entregas possíveis:
 
 ## M8 — Automação e agentes
 
-Entregas:
+Entregas planejadas:
 - geração de prompts Codex;
 - preparação de tarefas técnicas;
 - acompanhamento de PRs;

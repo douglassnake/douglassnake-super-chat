@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Super Chat · Segundo Cérebro</title>
+  <link rel="stylesheet" href="/app/styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">SC</div>
+        <div>
+          <strong>Super Chat</strong>
+          <span>Segundo Cérebro</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-label">Projetos</div>
+        <div id="project-nav" class="project-nav">
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line short"></div>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <span class="dot online"></span>
+        <span>Memória operacional</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">CENTRAL DE CONTEXTO</div>
+          <h1>Segundo Cérebro</h1>
+          <p>Memória, contexto e continuidade de projetos.</p>
+        </div>
+        <button id="refresh-button" class="button ghost" type="button">Atualizar</button>
+      </header>
+
+      <section id="stats" class="stats-grid" aria-label="Resumo">
+        <article class="stat-card"><span>Projetos</span><strong id="stat-projects">—</strong></article>
+        <article class="stat-card"><span>Precisam atenção</span><strong id="stat-attention">—</strong></article>
+        <article class="stat-card"><span>Deltas pendentes</span><strong id="stat-deltas">—</strong></article>
+      </section>
+
+      <section class="workspace-grid">
+        <div class="panel projects-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">PORTFÓLIO</span>
+              <h2>Projetos ativos</h2>
+            </div>
+          </div>
+          <div id="project-list" class="project-list"></div>
+        </div>
+
+        <div class="panel detail-panel">
+          <div id="empty-detail" class="empty-state">
+            <div class="empty-icon">↗</div>
+            <h2>Selecione um projeto</h2>
+            <p>Veja status, próxima ação, contexto, atividade técnica e memória pendente.</p>
+          </div>
+
+          <div id="project-detail" class="hidden">
+            <div class="detail-header">
+              <div>
+                <span id="detail-status" class="status-pill"></span>
+                <h2 id="detail-name"></h2>
+                <p id="detail-description" class="muted"></p>
+              </div>
+              <div id="detail-health" class="health-ring" aria-label="Health Score"></div>
+            </div>
+
+            <div class="next-action-card">
+              <span>Próxima ação</span>
+              <strong id="detail-next-action">—</strong>
+            </div>
+
+            <div class="action-row">
+              <button id="continue-button" class="button primary" type="button">Continuar projeto</button>
+              <button id="github-sync-button" class="button ghost hidden" type="button">Sincronizar GitHub</button>
+            </div>
+
+            <div class="context-controls">
+              <input id="context-query" type="text" placeholder="Pergunta opcional para o contexto…" />
+              <select id="context-profile" aria-label="Perfil de contexto">
+                <option value="minimal">Mínimo</option>
+                <option value="standard" selected>Padrão</option>
+                <option value="deep">Profundo</option>
+              </select>
+            </div>
+
+            <div id="context-result" class="context-result hidden"></div>
+
+            <div class="detail-columns">
+              <section>
+                <div class="subheading"><h3>Tarefas abertas</h3><span id="task-count"></span></div>
+                <div id="task-list" class="stack"></div>
+              </section>
+              <section>
+                <div class="subheading"><h3>Fontes</h3><span id="source-count"></span></div>
+                <div id="source-list" class="stack"></div>
+              </section>
+            </div>
+
+            <section class="section-block">
+              <div class="subheading"><h3>Session Memory</h3><span id="delta-count"></span></div>
+              <div id="delta-list" class="stack"></div>
+            </section>
+
+            <section class="section-block">
+              <div class="subheading"><h3>Atividade técnica</h3><span>últimos eventos</span></div>
+              <div id="event-list" class="timeline"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="delta-dialog" class="modal">
+    <form method="dialog" class="modal-card">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">SESSION DELTA</span>
+          <h2>Revisar alterações</h2>
+        </div>
+        <button class="icon-button" value="cancel" aria-label="Fechar">×</button>
+      </div>
+      <div id="delta-preview" class="delta-preview"></div>
+      <div class="modal-actions">
+        <button id="discard-delta" class="button danger" type="button">Descartar</button>
+        <button class="button ghost" value="cancel">Cancelar</button>
+        <button id="apply-delta" class="button primary" type="button">Aplicar à memória</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="/app/app.js" defer></script>
+</body>
+</html>
