@@ -105,33 +105,30 @@ class GoogleConnector:
 
     def drive_metadata(self, file_id: str) -> dict[str, Any]:
         encoded = quote(file_id, safe="")
-        response = self._get(
+        return self._get(
             f"{self.drive_api_url}/files/{encoded}",
             params={
                 "fields": "id,name,mimeType,modifiedTime,webViewLink,size,md5Checksum,trashed",
                 "supportsAllDrives": "true",
             },
-        )
-        return response.json()
+        ).json()
 
     def drive_text(self, file_id: str, metadata: dict[str, Any]) -> str | None:
         mime_type = str(metadata.get("mimeType") or "")
         encoded = quote(file_id, safe="")
         if mime_type == "application/vnd.google-apps.document":
-            response = self._get(
+            return self._get(
                 f"{self.drive_api_url}/files/{encoded}/export",
                 params={"mimeType": "text/plain"},
-            )
-            return response.text
+            ).text
         if mime_type.startswith("text/") or mime_type in {
             "application/json",
             "application/xml",
         }:
-            response = self._get(
+            return self._get(
                 f"{self.drive_api_url}/files/{encoded}",
                 params={"alt": "media", "supportsAllDrives": "true"},
-            )
-            return response.text
+            ).text
         return None
 
     def calendar_events(
@@ -142,17 +139,29 @@ class GoogleConnector:
         time_max: datetime,
     ) -> list[dict[str, Any]]:
         encoded = quote(calendar_id, safe="")
-        response = self._get(
+        payload = self._get(
             f"{self.calendar_api_url}/calendars/{encoded}/events",
             params={
                 "singleEvents": "true",
                 "orderBy": "startTime",
                 "maxResults": 100,
-                "timeMin": time_min.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-                "timeMax": time_max.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "timeMin": _aware(time_min).isoformat().replace("+00:00", "Z"),
+                "timeMax": _aware(time_max).isoformat().replace("+00:00", "Z"),
             },
-        )
-        return list(response.json().get("items", []))
+        ).json()
+        return list(payload.get("items", []))
+
+
+def _aware(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _same_instant(left: datetime | None, right: datetime | None) -> bool:
+    if left is None or right is None:
+        return left is right
+    return _aware(left) == _aware(right)
 
 
 def parse_google_datetime(value: str | None) -> datetime:
@@ -162,10 +171,8 @@ def parse_google_datetime(value: str | None) -> datetime:
         if "T" not in value:
             parsed_date = date.fromisoformat(value)
             return datetime.combine(parsed_date, datetime.min.time(), tzinfo=timezone.utc)
-        result = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if result.tzinfo is None:
-            result = result.replace(tzinfo=timezone.utc)
-        return result
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return _aware(parsed)
     except ValueError:
         return datetime.now(timezone.utc)
 
@@ -177,26 +184,24 @@ def _window_text(text: str, *, window_chars: int, overlap_chars: int) -> list[st
     if len(normalized) <= window_chars:
         return [normalized]
     step = max(1, window_chars - overlap_chars)
-    windows: list[str] = []
+    chunks: list[str] = []
     start = 0
     while start < len(normalized):
         chunk = normalized[start : start + window_chars].strip()
         if chunk:
-            windows.append(chunk)
+            chunks.append(chunk)
         if start + window_chars >= len(normalized):
             break
         start += step
-    return windows
+    return chunks
 
 
-def _best_windows(
-    text: str,
-    query: str,
-    *,
-    limit: int,
-    window_chars: int,
-) -> list[str]:
-    windows = _window_text(text, window_chars=window_chars, overlap_chars=min(400, window_chars // 4))
+def _best_windows(text: str, query: str, *, limit: int, window_chars: int) -> list[str]:
+    windows = _window_text(
+        text,
+        window_chars=window_chars,
+        overlap_chars=min(400, window_chars // 4),
+    )
     if not windows:
         return []
     if not query.strip():
@@ -206,8 +211,7 @@ def _best_windows(
         key=lambda pair: (lexical_relevance(query, pair[1]), -pair[0]),
         reverse=True,
     )
-    selected = sorted(ranked[:limit], key=lambda pair: pair[0])
-    return [chunk for _, chunk in selected]
+    return [chunk for _, chunk in sorted(ranked[:limit], key=lambda pair: pair[0])]
 
 
 def drive_context_candidates(
@@ -269,18 +273,18 @@ def drive_context_candidates(
                     limit=max_windows,
                     window_chars=window_chars,
                 )
-                for index, chunk in enumerate(windows, start=1):
-                    candidates.append(
-                        Candidate(
-                            kind="document_excerpt",
-                            title=f"{title} — trecho {index}",
-                            content=chunk,
-                            source_type="google_drive",
-                            source_ref=source_ref,
-                            timestamp=timestamp,
-                            importance=0.92,
-                        )
+                candidates.extend(
+                    Candidate(
+                        kind="document_excerpt",
+                        title=f"{title} — trecho {index}",
+                        content=chunk,
+                        source_type="google_drive",
+                        source_ref=source_ref,
+                        timestamp=timestamp,
+                        importance=0.92,
                     )
+                    for index, chunk in enumerate(windows, start=1)
+                )
             else:
                 candidates.append(
                     Candidate(
@@ -312,7 +316,7 @@ def _calendar_event_payload(calendar_id: str, item: dict[str, Any]) -> dict[str,
     summary = str(item.get("summary") or "Evento sem título")
     description = str(item.get("description") or "").strip()
     location = str(item.get("location") or "").strip()
-    body_parts = []
+    body_parts: list[str] = []
     if description:
         body_parts.append(description)
     if location:
@@ -337,18 +341,15 @@ def _calendar_event_payload(calendar_id: str, item: dict[str, Any]) -> dict[str,
     }
 
 
-def _upsert_calendar_event(
-    db: Session,
-    project_id: UUID,
-    payload: dict[str, Any],
-) -> str:
-    stmt = select(Event).where(
-        Event.project_id == project_id,
-        Event.source_type == "google_calendar",
-        Event.event_type == "google_calendar.event",
-        Event.external_id == payload["external_id"],
+def _upsert_calendar_event(db: Session, project_id: UUID, payload: dict[str, Any]) -> str:
+    event = db.scalar(
+        select(Event).where(
+            Event.project_id == project_id,
+            Event.source_type == "google_calendar",
+            Event.event_type == "google_calendar.event",
+            Event.external_id == payload["external_id"],
+        )
     )
-    event = db.scalar(stmt)
     if event is None:
         db.add(
             Event(
@@ -369,13 +370,14 @@ def _upsert_calendar_event(
         [
             event.title != payload["title"],
             event.body != payload["body"],
-            event.occurred_at != payload["occurred_at"],
+            not _same_instant(event.occurred_at, payload["occurred_at"]),
             event.url != payload["url"],
             (event.metadata_json or {}) != payload["metadata"],
         ]
     )
     if not changed:
         return "skipped"
+
     event.title = payload["title"]
     event.body = payload["body"]
     event.occurred_at = payload["occurred_at"]
@@ -401,11 +403,7 @@ def sync_project_google(
     owns_reader = reader is None
     connector: GoogleReader = reader or GoogleConnector()
     now = datetime.now(timezone.utc)
-    created = 0
-    updated = 0
-    skipped = 0
-    drive_sources = 0
-    calendar_sources = 0
+    created = updated = skipped = drive_sources = calendar_sources = 0
 
     try:
         for source in sources:
@@ -434,9 +432,7 @@ def sync_project_google(
                 time_min=now - timedelta(days=14),
                 time_max=now + timedelta(days=120),
             )
-            local_created = 0
-            local_updated = 0
-            local_skipped = 0
+            local_created = local_updated = local_skipped = 0
             for item in events:
                 if not item.get("id"):
                     continue
