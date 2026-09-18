@@ -211,7 +211,13 @@ def export_agent_handoff_markdown(
     db: Session = Depends(get_db),
 ) -> PlainTextResponse:
     handoff = get_handoff(db, handoff_id)
+    pack = get_pack(db, handoff.pack_id)
+    if pack.fingerprint != handoff.pack_fingerprint:
+        raise HTTPException(
+            status_code=409,
+            detail="Task pack fingerprint no longer matches the handoff snapshot",
+        )
     return PlainTextResponse(
-        render_handoff_markdown(handoff),
+        render_handoff_markdown(handoff, pack),
         media_type="text/markdown; charset=utf-8",
     )
