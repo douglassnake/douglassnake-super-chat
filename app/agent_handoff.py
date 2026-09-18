@@ -25,6 +25,22 @@ NEVER_IMPLICITLY_AUTHORIZED = [
     "write_external_service",
 ]
 
+SENSITIVE_PAYLOAD_KEYS = {
+    "password",
+    "passwd",
+    "secret",
+    "client_secret",
+    "refresh_token",
+    "access_token",
+    "api_key",
+    "apikey",
+    "token",
+    "authorization",
+    "key",
+    "signature",
+    "sig",
+}
+
 
 def sanitize_value(value: Any) -> Any:
     if isinstance(value, str):
@@ -34,7 +50,15 @@ def sanitize_value(value: Any) -> Any:
     if isinstance(value, tuple):
         return [sanitize_value(item) for item in value]
     if isinstance(value, dict):
-        return {str(key): sanitize_value(item) for key, item in value.items()}
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            string_key = str(key)
+            normalized_key = string_key.strip().lower().replace("-", "_")
+            if normalized_key in SENSITIVE_PAYLOAD_KEYS:
+                result[string_key] = "[REDACTED]"
+            else:
+                result[string_key] = sanitize_value(item)
+        return result
     return value
 
 
