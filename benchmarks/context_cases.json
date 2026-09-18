@@ -1,0 +1,115 @@
+{
+  "name": "context-engine-baseline-v1",
+  "cases": [
+    {
+      "name": "CFD pressure-loss minimal",
+      "project_name": "Projeto técnico fictício",
+      "query": "perda de carga pressão escoamento CFD",
+      "profile": "minimal",
+      "k": 3,
+      "expected_source_refs": ["fixture:cfd-pressure-loss"],
+      "items": [
+        {
+          "kind": "fact",
+          "title": "Perda de carga",
+          "content": "A análise CFD avalia pressão, velocidade do escoamento e perda de carga no componente.",
+          "importance": 0.95,
+          "source_type": "benchmark",
+          "source_ref": "fixture:cfd-pressure-loss"
+        },
+        {
+          "kind": "note",
+          "title": "Material",
+          "content": "O material estrutural possui módulo de elasticidade e coeficiente de Poisson definidos.",
+          "importance": 0.65,
+          "source_type": "benchmark",
+          "source_ref": "fixture:material"
+        },
+        {
+          "kind": "note",
+          "title": "Comunicação",
+          "content": "Planejamento de publicação e calendário editorial para redes sociais.",
+          "importance": 0.45,
+          "source_type": "benchmark",
+          "source_ref": "fixture:social"
+        }
+      ]
+    },
+    {
+      "name": "Access control standard",
+      "project_name": "SaaS fictício",
+      "query": "MFA autenticação RBAC permissões owner",
+      "profile": "standard",
+      "k": 3,
+      "expected_source_refs": ["fixture:mfa", "fixture:rbac"],
+      "items": [
+        {
+          "kind": "decision",
+          "title": "MFA",
+          "content": "A autenticação administrativa exige MFA e reautenticação para ações sensíveis.",
+          "importance": 1.0,
+          "source_type": "benchmark",
+          "source_ref": "fixture:mfa"
+        },
+        {
+          "kind": "fact",
+          "title": "RBAC",
+          "content": "O controle de acesso usa RBAC com papéis OWNER, ADMIN e MEMBER e proteção do último OWNER.",
+          "importance": 0.95,
+          "source_type": "benchmark",
+          "source_ref": "fixture:rbac"
+        },
+        {
+          "kind": "note",
+          "title": "Cobrança",
+          "content": "A assinatura possui catálogo de preços e ciclo mensal de cobrança.",
+          "importance": 0.75,
+          "source_type": "benchmark",
+          "source_ref": "fixture:billing"
+        },
+        {
+          "kind": "note",
+          "title": "Interface",
+          "content": "O dashboard exibe indicadores visuais e navegação responsiva.",
+          "importance": 0.5,
+          "source_type": "benchmark",
+          "source_ref": "fixture:ui"
+        }
+      ]
+    },
+    {
+      "name": "Long-context deep",
+      "project_name": "Projeto documental fictício",
+      "query": "documento prazo reunião decisão próxima ação",
+      "profile": "deep",
+      "k": 4,
+      "expected_source_refs": ["fixture:deadline", "fixture:meeting"],
+      "items": [
+        {
+          "kind": "document_excerpt",
+          "title": "Prazo contratual",
+          "content": "O documento registra o prazo final, a decisão aprovada e a próxima ação necessária antes da entrega.",
+          "importance": 0.95,
+          "source_type": "benchmark",
+          "source_ref": "fixture:deadline"
+        },
+        {
+          "kind": "event",
+          "title": "Reunião de revisão",
+          "content": "Reunião agendada para revisar a decisão, confirmar responsáveis e validar o prazo do projeto.",
+          "importance": 0.9,
+          "source_type": "benchmark",
+          "source_ref": "fixture:meeting"
+        },
+        {
+          "kind": "note",
+          "title": "Arquivo antigo",
+          "content": "Registro histórico sem relação com o prazo ou com a reunião atual.",
+          "importance": 0.3,
+          "source_type": "benchmark",
+          "source_ref": "fixture:archive"
+        }
+      ]
+    }
+  ]
+}
