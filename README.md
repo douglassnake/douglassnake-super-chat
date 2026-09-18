@@ -1,6 +1,6 @@
 # Douglas Snake — Super Chat
 
-O **Super Chat** é a interface operacional do **Segundo Cérebro**: memória persistente, continuidade de projetos e recuperação seletiva de contexto para evitar o carregamento repetido de históricos longos.
+O **Super Chat** é a interface operacional do **Segundo Cérebro**: memória persistente, continuidade de projetos, recuperação seletiva de contexto e preparação segura de trabalho para agentes.
 
 ## Arquitetura atual
 
@@ -23,10 +23,22 @@ Context Engine
         ↓
 Pacote mínimo e rastreável de contexto
         ↓
-Modelo de IA / agente
+Agent Task Pack
+  ├── objetivo
+  ├── critérios de aceite explícitos
+  ├── guardrails
+  ├── fontes
+  ├── orçamento de tokens
+  └── fingerprint SHA-256
+        ↓
+preview → pending → aprovação humana → approved
+        ↓
+Handoff para Codex / agente
 ```
 
-## Marcos M1–M7.0
+Um `AgentTaskPack` aprovado está pronto para handoff, mas **não autoriza por si só merge, deploy, publicação ou escrita em serviços externos**.
+
+## Marcos M1–M8.0
 
 - **M1 — Memória operacional:** projetos, decisões, tarefas, resumos, PostgreSQL, Alembic e Docker.
 - **M2 — Context Engine:** ranking, deduplicação, compactação, orçamento de tokens e `continue`.
@@ -35,6 +47,39 @@ Modelo de IA / agente
 - **M5 — Interface Web:** dashboard, Health Score, contexto/tokens e revisão visual dos deltas.
 - **M6 — Google Context:** Drive sob demanda + Calendar normalizado em eventos.
 - **M7.0 — Retrieval Benchmark:** precision/recall, cobertura, compressão, latência e baseline reproduzível.
+- **M8.0 — Agent Task Packs:** preparação rastreável de tarefas para agentes com critérios de aceite, guardrails, redaction de secrets e aprovação humana.
+
+## Agent Task Packs
+
+O M8.0 transforma o contexto selecionado em um artefato determinístico para Codex/agentes. Os critérios de aceite são obrigatórios e devem ser fornecidos explicitamente; o sistema não os inventa.
+
+Estados:
+
+```text
+preview
+   ↓
+pending
+   ├── approve → approved
+   └── cancel  → cancelled
+```
+
+O pack inclui snapshot do projeto, objetivo, critérios de aceite, restrições, áreas sugeridas pelo solicitante, contexto selecionado, referências de origem, orçamento de tokens e fingerprint SHA-256.
+
+Antes de persistir/exportar, o sistema aplica redaction determinística para padrões de credenciais, bearer tokens, prefixes conhecidos e parâmetros sensíveis em URLs. A proteção é complementar: secrets reais continuam proibidos no repositório e não devem ser deliberadamente inseridos no contexto.
+
+Endpoints:
+
+```text
+POST /agent-task-packs/preview
+POST /agent-task-packs
+GET  /agent-task-packs/{pack_id}
+GET  /projects/{project_id}/agent-task-packs
+POST /agent-task-packs/{pack_id}/approve
+POST /agent-task-packs/{pack_id}/cancel
+GET  /agent-task-packs/{pack_id}/markdown
+```
+
+Veja `docs/AGENT_TASK_PACKS.md`.
 
 ## Recuperação e economia de tokens
 
@@ -121,7 +166,7 @@ Se uma fonte Drive estiver vinculada mas OAuth não estiver disponível, o coman
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m7-retrieval-benchmark
+git checkout codex/m8-agent-task-packs
 cp .env.example .env
 docker compose up --build
 ```
@@ -148,12 +193,21 @@ POST   /projects/{project_id}/session-deltas
 GET    /session-deltas/{delta_id}/preview
 POST   /session-deltas/{delta_id}/apply
 POST   /session-deltas/{delta_id}/discard
+
+POST   /agent-task-packs/preview
+POST   /agent-task-packs
+GET    /agent-task-packs/{pack_id}
+POST   /agent-task-packs/{pack_id}/approve
+POST   /agent-task-packs/{pack_id}/cancel
+GET    /agent-task-packs/{pack_id}/markdown
 ```
 
 ## Privacidade
 
 O repositório é público. Código, templates e dados fictícios podem ser versionados; memória real, `.env`, credenciais, conversas, dumps do banco e documentos privados não.
 
-## Próxima etapa
+## Próximas etapas
 
-O M7.1 (embeddings/pgvector) permanece **condicional**. Primeiro deve ser criado um benchmark privado com consultas reais. Busca semântica será adicionada apenas se o baseline lexical mostrar lacunas mensuráveis de recall/ranking.
+O **M7.1** (embeddings/pgvector) continua condicional a um benchmark privado com consultas reais.
+
+Após M8.0, a automação deve evoluir em incrementos com autorização explícita: primeiro handoff assistido/auditável para agentes; depois, se necessário, acompanhamento de execução. Merge, deploy, publicação e escrita externa continuam exigindo políticas de autorização próprias.

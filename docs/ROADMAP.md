@@ -84,19 +84,60 @@ Critério: manter embeddings somente se houver melhoria mensurável de recupera�
 Criar um conjunto **privado** de consultas reais dos projetos, com gabaritos de `source_ref`. Dados e documentos privados não entram no repositório público; somente métricas agregadas podem ser registradas.
 
 ## M8 — Automação e agentes
+
+### M8.0 — Agent Task Packs
+Status: **concluído na branch `codex/m8-agent-task-packs`**.
+
+Entregas:
+- estrutura persistente `AgentTaskPack`;
+- snapshot do projeto, objetivo, contexto, fontes e budget;
+- critérios de aceite explícitos e obrigatórios;
+- guardrails padrão + restrições do solicitante;
+- áreas/arquivos sugeridos sem inventar paths;
+- redaction determinística de padrões de secrets;
+- fingerprint SHA-256 canônico;
+- prevenção de duplicação de pack idêntico;
+- estados `pending`, `approved` e `cancelled`;
+- aprovação e cancelamento protegidos por estado;
+- preview sem persistência;
+- exportação Markdown determinística;
+- endpoints de criação, consulta, aprovação, cancelamento e exportação;
+- migration Alembic;
+- testes automatizados;
+- documentação `docs/AGENT_TASK_PACKS.md`.
+
+Regra de autorização: `approved` significa **pronto para handoff**, não autorização automática para merge, deploy, publicação ou escrita externa.
+
+### M8.1 — handoff assistido e auditável
 Status: **planejado**.
 
-- geração de prompts Codex;
-- preparação de tarefas técnicas;
-- acompanhamento de PRs;
-- rotinas de revisão;
-- aprovações humanas explícitas para ações de escrita.
+Objetivo: entregar um `AgentTaskPack` aprovado a um executor sem ampliar silenciosamente permissões.
+
+Possíveis entregas:
+- registro de handoff com executor/alvo;
+- trilha de auditoria do pack entregue;
+- retorno estruturado de execução/status;
+- associação entre pack, branch, commit e PR quando esses artefatos existirem;
+- diferenças entre plano aprovado e resultado executado;
+- revisão humana antes de qualquer ação de escrita externa;
+- nenhum merge/deploy automático por padrão.
+
+### M8.2 — acompanhamento de execução
+Status: **futuro**.
+
+Somente após M8.1 e métricas operacionais:
+- acompanhamento de PRs e CI;
+- atualização de progresso;
+- geração de follow-ups;
+- encerramento de tarefa mediante evidência;
+- políticas explícitas por tipo de ação.
 
 ## Regra de evolução
 
-Não adicionar complexidade de IA antes de existir:
+Não adicionar complexidade de IA ou autonomia antes de existir:
 1. fonte de verdade;
 2. modelo de dados;
 3. rastreabilidade;
 4. teste de recuperação;
-5. métrica de contexto.
+5. métrica de contexto;
+6. autorização humana explícita para ações com efeito externo.
