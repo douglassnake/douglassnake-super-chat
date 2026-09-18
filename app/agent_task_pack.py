@@ -154,7 +154,14 @@ def build_agent_task_pack(
 
 
 def fingerprint_pack(content: dict[str, Any]) -> str:
-    canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    stable = {
+        **content,
+        "context": [
+            {key: value for key, value in item.items() if key != "score"}
+            for item in content.get("context", [])
+        ],
+    }
+    canonical = json.dumps(stable, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
