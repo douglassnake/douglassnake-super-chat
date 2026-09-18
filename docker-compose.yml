@@ -18,6 +18,8 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:-superchat}@db:5432/${POSTGRES_DB:-superchat}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_API_URL: ${GITHUB_API_URL:-https://api.github.com}
     ports:
       - "8000:8000"
     depends_on:
