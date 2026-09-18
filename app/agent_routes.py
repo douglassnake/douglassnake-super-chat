@@ -50,7 +50,8 @@ def model_payload(pack: AgentTaskPack) -> dict:
         "id": pack.id,
         "project_id": pack.project_id,
         "status": pack.status,
-        "authorized_for_execution": pack.status == "approved",
+        "ready_for_handoff": pack.status == "approved",
+        "authorized_for_execution": False,
         "project": pack.project_snapshot_json or {},
         "objective": pack.objective,
         "profile": pack.profile,
@@ -106,6 +107,7 @@ def preview_agent_task_pack(
     return {
         **pack,
         "status": "preview",
+        "ready_for_handoff": False,
         "authorized_for_execution": False,
     }
 
