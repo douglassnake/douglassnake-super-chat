@@ -13,7 +13,9 @@ from app.models import Event, Project, ProjectSource
 
 
 class GitHubAPIError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class GitHubReader(Protocol):
@@ -22,6 +24,9 @@ class GitHubReader(Protocol):
     def pulls(self, repository: str) -> list[dict[str, Any]]: ...
     def issues(self, repository: str) -> list[dict[str, Any]]: ...
     def workflow_runs(self, repository: str) -> list[dict[str, Any]]: ...
+    def commit(self, repository: str, sha: str) -> dict[str, Any]: ...
+    def pull(self, repository: str, number: int) -> dict[str, Any]: ...
+    def check_runs(self, repository: str, sha: str) -> list[dict[str, Any]]: ...
 
 
 class GitHubConnector:
@@ -51,12 +56,16 @@ class GitHubConnector:
         self.client.close()
 
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        response = self.client.get(path, params=params)
+        try:
+            response = self.client.get(path, params=params)
+        except httpx.HTTPError as exc:
+            raise GitHubAPIError(f"GitHub request unavailable: {exc}") from exc
         if response.status_code >= 400:
             rate_remaining = response.headers.get("x-ratelimit-remaining")
             detail = response.text[:500]
             raise GitHubAPIError(
-                f"GitHub request failed ({response.status_code}, rate_remaining={rate_remaining}): {detail}"
+                f"GitHub request failed ({response.status_code}, rate_remaining={rate_remaining}): {detail}",
+                status_code=response.status_code,
             )
         return response.json()
 
@@ -76,6 +85,19 @@ class GitHubConnector:
     def workflow_runs(self, repository: str) -> list[dict[str, Any]]:
         payload = self._get(f"/repos/{repository}/actions/runs", {"per_page": 20})
         return payload.get("workflow_runs", [])
+
+    def commit(self, repository: str, sha: str) -> dict[str, Any]:
+        return self._get(f"/repos/{repository}/commits/{sha}")
+
+    def pull(self, repository: str, number: int) -> dict[str, Any]:
+        return self._get(f"/repos/{repository}/pulls/{number}")
+
+    def check_runs(self, repository: str, sha: str) -> list[dict[str, Any]]:
+        payload = self._get(
+            f"/repos/{repository}/commits/{sha}/check-runs",
+            {"per_page": 100},
+        )
+        return payload.get("check_runs", [])
 
 
 def parse_github_datetime(value: str | None) -> datetime:
@@ -165,9 +187,9 @@ def sync_project_github(
 
             for item in commits:
                 sha = str(item.get("sha") or "")
-                commit = item.get("commit") or {}
-                author = commit.get("author") or commit.get("committer") or {}
-                message = str(commit.get("message") or "Commit sem mensagem")
+                commit_data = item.get("commit") or {}
+                author = commit_data.get("author") or commit_data.get("committer") or {}
+                message = str(commit_data.get("message") or "Commit sem mensagem")
                 title = message.splitlines()[0] if message else "Commit"
                 was_created = add_event_if_new(
                     db,
