@@ -36,6 +36,42 @@
       ]
     },
     {
+      "name": "Token pressure minimal",
+      "project_name": "Projeto extenso fictício",
+      "query": "falha crítica pipeline testes próxima ação",
+      "profile": "minimal",
+      "k": 2,
+      "expected_source_refs": ["fixture:critical-ci"],
+      "items": [
+        {
+          "kind": "decision",
+          "title": "Falha crítica de CI",
+          "content": "A pipeline de testes apresenta falha crítica; a próxima ação é revisar o workflow e corrigir o teste quebrado.",
+          "importance": 1.0,
+          "source_type": "benchmark",
+          "source_ref": "fixture:critical-ci"
+        },
+        {
+          "kind": "note",
+          "title": "Histórico volumoso A",
+          "content": "Registro antigo detalhado de arquitetura, documentação, configuração e acompanhamento operacional sem relação com a falha crítica atual.",
+          "repeat": 180,
+          "importance": 0.55,
+          "source_type": "benchmark",
+          "source_ref": "fixture:large-a"
+        },
+        {
+          "kind": "note",
+          "title": "Histórico volumoso B",
+          "content": "Informação histórica extensa sobre planejamento visual, inventário, relatórios, reuniões e atividades concluídas anteriormente.",
+          "repeat": 180,
+          "importance": 0.5,
+          "source_type": "benchmark",
+          "source_ref": "fixture:large-b"
+        }
+      ]
+    },
+    {
       "name": "Access control standard",
       "project_name": "SaaS fictício",
       "query": "MFA autenticação RBAC permissões owner",
