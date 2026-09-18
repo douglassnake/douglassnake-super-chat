@@ -9,9 +9,6 @@ from sqlalchemy.orm import Session
 from app.models import Event, Project, ProjectSource, SessionDelta, Task
 
 
-OPEN_TASK_STATUSES = ("todo", "doing", "blocked")
-
-
 def ensure_aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
@@ -97,58 +94,64 @@ def calculate_health_score(
 def project_metrics(db: Session, project: Project, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
 
-    open_tasks_stmt = select(func.count(Task.id)).where(
-        Task.project_id == project.id,
-        Task.status.notin_(["done", "cancelled"]),
+    open_tasks = int(
+        db.scalar(
+            select(func.count(Task.id)).where(
+                Task.project_id == project.id,
+                Task.status.notin_(["done", "cancelled"]),
+            )
+        )
+        or 0
     )
-    open_tasks = int(db.scalar(open_tasks_stmt) or 0)
-
-    overdue_stmt = select(func.count(Task.id)).where(
-        Task.project_id == project.id,
-        Task.status.notin_(["done", "cancelled"]),
-        Task.due_at.is_not(None),
-        Task.due_at < now,
+    overdue_tasks = int(
+        db.scalar(
+            select(func.count(Task.id)).where(
+                Task.project_id == project.id,
+                Task.status.notin_(["done", "cancelled"]),
+                Task.due_at.is_not(None),
+                Task.due_at < now,
+            )
+        )
+        or 0
     )
-    overdue_tasks = int(db.scalar(overdue_stmt) or 0)
-
-    blocked_stmt = select(func.count(Task.id)).where(
-        Task.project_id == project.id,
-        Task.status.notin_(["done", "cancelled"]),
-        or_(Task.status == "blocked", Task.blocked_by.is_not(None)),
+    blocked_tasks = int(
+        db.scalar(
+            select(func.count(Task.id)).where(
+                Task.project_id == project.id,
+                Task.status.notin_(["done", "cancelled"]),
+                or_(Task.status == "blocked", Task.blocked_by.is_not(None)),
+            )
+        )
+        or 0
     )
-    blocked_tasks = int(db.scalar(blocked_stmt) or 0)
-
-    pending_stmt = select(func.count(SessionDelta.id)).where(
-        SessionDelta.project_id == project.id,
-        SessionDelta.status == "pending",
+    pending_deltas = int(
+        db.scalar(
+            select(func.count(SessionDelta.id)).where(
+                SessionDelta.project_id == project.id,
+                SessionDelta.status == "pending",
+            )
+        )
+        or 0
     )
-    pending_deltas = int(db.scalar(pending_stmt) or 0)
 
     failed_since = now - timedelta(days=7)
-    failed_stmt = select(func.count(Event.id)).where(
-        Event.project_id == project.id,
-        Event.event_type == "github.workflow_run",
-        Event.occurred_at >= failed_since,
-        Event.metadata_json["conclusion"].as_string().in_(["failure", "cancelled", "timed_out"]),
+    recent_workflows = list(
+        db.scalars(
+            select(Event).where(
+                Event.project_id == project.id,
+                Event.event_type == "github.workflow_run",
+                Event.occurred_at >= failed_since,
+            )
+        ).all()
     )
-    try:
-        recent_failed_runs = int(db.scalar(failed_stmt) or 0)
-    except Exception:
-        # SQLite/alternative dialects can have different JSON expression support.
-        db.rollback()
-        events_stmt = select(Event).where(
-            Event.project_id == project.id,
-            Event.event_type == "github.workflow_run",
-            Event.occurred_at >= failed_since,
-        )
-        recent_failed_runs = sum(
-            1
-            for event in db.scalars(events_stmt).all()
-            if str((event.metadata_json or {}).get("conclusion") or "").lower()
-            in {"failure", "cancelled", "timed_out"}
-        )
+    recent_failed_runs = sum(
+        1
+        for event in recent_workflows
+        if str((event.metadata_json or {}).get("conclusion") or "").lower()
+        in {"failure", "cancelled", "timed_out"}
+    )
 
-    health = calculate_health_score(
+    return calculate_health_score(
         project,
         open_tasks=open_tasks,
         overdue_tasks=overdue_tasks,
@@ -157,7 +160,6 @@ def project_metrics(db: Session, project: Project, now: datetime | None = None) 
         recent_failed_runs=recent_failed_runs,
         now=now,
     )
-    return health
 
 
 def dashboard_payload(db: Session) -> dict:
