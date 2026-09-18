@@ -26,7 +26,7 @@ Pacote mínimo e rastreável de contexto
 Modelo de IA / agente
 ```
 
-## Marcos M1–M6
+## Marcos M1–M7.0
 
 - **M1 — Memória operacional:** projetos, decisões, tarefas, resumos, PostgreSQL, Alembic e Docker.
 - **M2 — Context Engine:** ranking, deduplicação, compactação, orçamento de tokens e `continue`.
@@ -34,6 +34,36 @@ Modelo de IA / agente
 - **M4 — Session Memory:** `SessionDelta` revisável e aplicação somente após confirmação.
 - **M5 — Interface Web:** dashboard, Health Score, contexto/tokens e revisão visual dos deltas.
 - **M6 — Google Context:** Drive sob demanda + Calendar normalizado em eventos.
+- **M7.0 — Retrieval Benchmark:** precision/recall, cobertura, compressão, latência e baseline reproduzível.
+
+## Recuperação e economia de tokens
+
+O Context Engine mede o conjunto candidato e o pacote efetivamente selecionado. No baseline sintético M7.0, o cenário de pressão do perfil `minimal` produziu:
+
+```text
+13.926 tokens candidatos
+ 1.794 tokens selecionados
+87,12% de compressão aproximada
+recall@2 = 1,0 no fixture
+```
+
+Esse resultado valida o funcionamento do budgeter em um cenário artificial. Ele não deve ser interpretado como garantia de desempenho em projetos reais.
+
+Para executar o benchmark:
+
+```bash
+python scripts/context_benchmark.py benchmarks/context_cases.json
+```
+
+A avaliação também está disponível pela API:
+
+```text
+POST /evaluation/context
+```
+
+O gabarito (`expected_source_refs`) é explícito, permitindo medir `precision@k`, `recall@k`, coverage, tokens candidatos/selecionados e latência.
+
+Veja `docs/RETRIEVAL_BENCHMARK.md`.
 
 ## Google Drive
 
@@ -50,7 +80,6 @@ Uma fonte documental usa:
 O sistema persiste somente referência e metadados do arquivo. Quando o Context Engine precisa responder, o texto é recuperado sob demanda, dividido em janelas e somente os trechos lexicalmente relevantes competem pelo orçamento de tokens.
 
 A versão M6 extrai texto diretamente de:
-
 - Google Docs, por exportação `text/plain`;
 - arquivos `text/*`;
 - JSON e XML.
@@ -81,19 +110,7 @@ normaliza compromissos como eventos compactos `google_calendar.event`. O sync é
 
 O conector é somente leitura. As credenciais ficam exclusivamente no ambiente da instalação privada.
 
-Pode-se fornecer um access token temporário:
-
-```dotenv
-GOOGLE_ACCESS_TOKEN=
-```
-
-ou refresh token:
-
-```dotenv
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REFRESH_TOKEN=
-```
+Pode-se fornecer `GOOGLE_ACCESS_TOKEN` temporário ou `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `GOOGLE_REFRESH_TOKEN`.
 
 Nenhum access token, refresh token ou client secret deve ser persistido no banco, no contexto, em logs de teste ou no repositório.
 
@@ -104,7 +121,7 @@ Se uma fonte Drive estiver vinculada mas OAuth não estiver disponível, o coman
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m6-google-context
+git checkout codex/m7-retrieval-benchmark
 cp .env.example .env
 docker compose up --build
 ```
@@ -121,6 +138,7 @@ GET    /projects/{project_id}/overview
 GET    /projects/{project_id}/snapshot
 GET    /projects/{project_id}/continue
 POST   /context/build
+POST   /evaluation/context
 
 POST   /projects/{project_id}/sources
 POST   /projects/{project_id}/github/sync
@@ -138,4 +156,4 @@ O repositório é público. Código, templates e dados fictícios podem ser vers
 
 ## Próxima etapa
 
-Antes de introduzir embeddings/pgvector no M7, o projeto deve medir a qualidade e a eficiência da recuperação atual com casos reais. A busca semântica entra somente onde a busca lexical demonstrar insuficiência mensurável.
+O M7.1 (embeddings/pgvector) permanece **condicional**. Primeiro deve ser criado um benchmark privado com consultas reais. Busca semântica será adicionada apenas se o baseline lexical mostrar lacunas mensuráveis de recall/ranking.
