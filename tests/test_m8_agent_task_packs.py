@@ -75,7 +75,7 @@ def _payload(project_id: str) -> dict:
         "objective": "Criar fluxo de Agent Task Pack sem executar deploy. api_key=objective-secret",
         "acceptance_criteria": [
             "Preview não persiste o pack",
-            "Pack aprovado deve indicar autorização de execução",
+            "Pack aprovado deve ficar pronto para handoff",
         ],
         "constraints": ["Não alterar banco fora da migration. password=constraint-secret"],
         "suggested_areas": ["app/agent_routes.py", "tests/test_m8_agent_task_packs.py"],
@@ -94,6 +94,7 @@ def test_preview_is_non_persistent_and_redacts_secrets(
     assert preview.status_code == 200
     body = preview.json()
     assert body["status"] == "preview"
+    assert body["ready_for_handoff"] is False
     assert body["authorized_for_execution"] is False
     assert len(body["fingerprint"]) == 64
     assert body["budget"]["estimated_tokens"] <= body["budget"]["max_tokens"]
@@ -103,7 +104,7 @@ def test_preview_is_non_persistent_and_redacts_secrets(
     ]
     assert body["acceptance_criteria"] == [
         "Preview não persiste o pack",
-        "Pack aprovado deve indicar autorização de execução",
+        "Pack aprovado deve ficar pronto para handoff",
     ]
 
     serialized = str(body).lower()
@@ -130,6 +131,7 @@ def test_create_approve_export_and_duplicate_protection(
     created = created_response.json()
     pack_id = created["id"]
     assert created["status"] == "pending"
+    assert created["ready_for_handoff"] is False
     assert created["authorized_for_execution"] is False
     assert created["fingerprint"] == preview["fingerprint"]
 
@@ -152,7 +154,8 @@ def test_create_approve_export_and_duplicate_protection(
     assert approved.status_code == 200
     approved_body = approved.json()
     assert approved_body["status"] == "approved"
-    assert approved_body["authorized_for_execution"] is True
+    assert approved_body["ready_for_handoff"] is True
+    assert approved_body["authorized_for_execution"] is False
     assert approved_body["approved_at"] is not None
 
     second_approve = client.post(f"/agent-task-packs/{pack_id}/approve")
@@ -186,6 +189,7 @@ def test_cancel_is_idempotent_and_blocks_approval(
     cancelled = client.post(f"/agent-task-packs/{pack_id}/cancel")
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["ready_for_handoff"] is False
     assert cancelled.json()["authorized_for_execution"] is False
     cancelled_at = cancelled.json()["cancelled_at"]
 
