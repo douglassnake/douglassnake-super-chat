@@ -20,6 +20,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("project_id", sa.Uuid(), sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False),
         sa.Column("status", sa.String(length=30), nullable=False, server_default="pending"),
+        sa.Column("project_snapshot_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
         sa.Column("objective", sa.Text(), nullable=False),
         sa.Column("profile", sa.String(length=30), nullable=False),
         sa.Column("query_text", sa.Text(), nullable=False),
