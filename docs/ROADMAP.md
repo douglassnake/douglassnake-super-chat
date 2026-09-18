@@ -21,27 +21,17 @@ GitHub somente leitura, commits, PRs, Issues, Actions, eventos normalizados e sy
 ## M4 — Session Memory
 Status: **concluído**.
 
-`SessionDelta`, preview, confirmação humana, aplicação transacional, decisões/tarefas propostas, alteração de status/próxima ação e descarte.
+`SessionDelta`, preview, confirmação humana, aplicação transacional e descarte.
 
 ## M5 — Interface web
 Status: **concluído**.
 
-Dashboard responsivo, Health Score explicável, projetos, tarefas, fontes, eventos, painel de tokens, `continuar`, SessionDelta visual e sync GitHub.
+Dashboard responsivo, Health Score explicável, projetos, tarefas, fontes, eventos, painel de tokens e revisão visual dos deltas.
 
 ## M6 — Google Drive e Calendar
 Status: **concluído**.
 
-- fontes `google_drive` e `google_calendar`;
-- OAuth somente por ambiente;
-- Drive somente leitura;
-- metadados persistidos sem copiar documentos completos;
-- Google Docs/textos recuperados sob demanda;
-- seleção lexical de janelas relevantes;
-- trechos Drive disputando o orçamento normal do Context Engine;
-- Calendar normalizado para `events`;
-- sync idempotente com create/update/skip;
-- degradação segura quando OAuth Drive não está disponível;
-- testes sem credenciais reais.
+Drive/Calendar somente leitura, metadados persistidos sem copiar documentos completos, recuperação sob demanda, eventos normalizados e sync idempotente.
 
 ## M7 — Qualidade de recuperação
 
@@ -49,39 +39,19 @@ Status: **concluído**.
 Status: **concluído na branch `codex/m7-retrieval-benchmark`**.
 
 Entregas:
-- `precision@k` e `recall@k`;
-- cobertura de fontes esperadas;
-- eficiência e compressão de tokens;
+- `precision@k`, `recall@k` e cobertura;
+- eficiência/compressão de tokens;
 - latência;
-- endpoint `POST /evaluation/context`;
-- dataset sintético versionável;
-- runner CLI;
-- execução automática no CI;
-- cenário de pressão de tokens;
-- documentação de interpretação.
+- endpoint de avaliação;
+- dataset sintético;
+- runner CLI e CI.
 
-Baseline sintético v1:
-- 4 casos;
-- recall e coverage de 1,0 nos fixtures;
-- cenário `Token pressure minimal`: 13.926 tokens candidatos → 1.794 selecionados, compressão de 0,871176, preservando recall@2 de 1,0.
-
-Esses números validam o mecanismo e o orçamento, mas não são evidência de desempenho em dados reais.
+Baseline sintético v1: cenário de pressão `minimal` com 13.926 tokens candidatos → 1.794 selecionados, compressão 0,871176 e recall@2 de 1,0 no fixture.
 
 ### M7.1 — busca híbrida/semântica
 Status: **condicional — não iniciado**.
 
-Possíveis entregas, somente se benchmark real justificar:
-- pgvector;
-- embeddings;
-- lexical + vetorial;
-- re-ranking;
-- comparação A/B contra o baseline M7.0.
-
-Critério: manter embeddings somente se houver melhoria mensurável de recuperação que compense custo, latência e complexidade operacional.
-
-### Próxima validação
-
-Criar um conjunto **privado** de consultas reais dos projetos, com gabaritos de `source_ref`. Dados e documentos privados não entram no repositório público; somente métricas agregadas podem ser registradas.
+Embeddings/pgvector somente se benchmark privado com consultas reais demonstrar ganho mensurável que compense custo, latência e complexidade.
 
 ## M8 — Automação e agentes
 
@@ -89,78 +59,81 @@ Criar um conjunto **privado** de consultas reais dos projetos, com gabaritos de 
 Status: **concluído na branch `codex/m8-agent-task-packs`**.
 
 Entregas:
-- estrutura persistente `AgentTaskPack`;
-- snapshot do projeto, objetivo, contexto, fontes e budget;
-- critérios de aceite explícitos e obrigatórios;
-- guardrails padrão + restrições do solicitante;
-- áreas/arquivos sugeridos sem inventar paths;
-- redaction determinística de padrões de secrets;
-- fingerprint SHA-256 canônico;
-- prevenção de duplicação de pack idêntico;
-- estados `pending`, `approved` e `cancelled`;
-- aprovação e cancelamento protegidos por estado;
-- preview sem persistência;
-- exportação Markdown determinística;
-- endpoints de criação, consulta, aprovação, cancelamento e exportação;
-- migration Alembic;
-- testes automatizados;
-- documentação `docs/AGENT_TASK_PACKS.md`.
+- `AgentTaskPack` persistente;
+- snapshot do projeto;
+- objetivo e critérios de aceite explícitos;
+- guardrails e áreas sugeridas;
+- contexto, fontes e budget;
+- redaction;
+- fingerprint SHA-256;
+- `pending`, `approved`, `cancelled`;
+- preview e Markdown;
+- migration/testes/documentação.
 
-Regra de autorização: `approved` significa **pronto para handoff**. O pack continua com `authorized_for_execution = false`; a liberação operacional ocorre somente no handoff do M8.1.
+`approved` significa pronto para handoff, não autorizado para execução.
 
 ### M8.1 — handoff assistido e auditável
 Status: **concluído na branch `codex/m8-1-agent-handoffs`**.
 
 Entregas:
-- estrutura persistente `AgentHandoff`;
-- vínculo obrigatório a Task Pack aprovado;
-- executor e alvo declarados;
-- allowlist explícita de ações;
-- nenhuma permissão operacional por padrão;
-- fingerprint do pack congelado no handoff;
-- snapshot compacto de objetivo, critérios, guardrails, fontes e budget;
-- estados `prepared`, `released`, `completed`, `failed` e `cancelled`;
-- release explícito antes de considerar execução liberada;
-- transições protegidas e idempotentes quando repetidas no mesmo estado;
-- resultado/falha estruturados com redaction;
-- limite para resultado serializado;
-- exportação Markdown com contexto do Task Pack e validação de fingerprint;
-- migration Alembic `0004_agent_handoffs`;
+- `AgentHandoff` persistente;
+- somente a partir de pack aprovado;
+- executor/alvo e allowlist explícita;
+- nenhuma permissão por padrão;
+- fingerprint congelado;
+- `prepared`, `released`, `completed`, `failed`, `cancelled`;
+- release explícito;
+- resultado/falha estruturados;
+- Markdown com contexto do pack;
+- migration/testes/documentação.
+
+Ações nunca implicitamente autorizadas incluem merge, deploy, publicação e escrita em serviços externos.
+
+### M8.2 — acompanhamento de execução e evidências
+Status: **concluído na branch `codex/m8-2-execution-tracking`**.
+
+Entregas:
+- `AgentExecution` com um registro único por handoff;
+- criação somente para handoff `released`;
+- `AgentExecutionEvent` append-only com sequência crescente;
+- estados `running`, `completed`, `failed`, `cancelled`;
+- progresso percentual e etapa atual;
+- referências opcionais de branch/commit/PR sem criação ou escrita externa;
+- eventos `started`, `progress`, `technical_refs`, `criterion_evidence` e `status`;
+- evidência por índice real de critério de aceite;
+- evidência explícita `passed`/`failed`;
+- estado atual do critério calculado pela evidência mais recente;
+- cobertura agregada `passed/failed/pending`;
+- conclusão bloqueada até todos os critérios estarem `passed`;
+- bloqueio dos endpoints terminais diretos do handoff quando existe execução rastreada;
+- sincronização transacional execução ↔ handoff em conclusão/falha/cancelamento;
+- redaction recursiva por padrão textual e por chave sensível em JSON;
+- migration `0005_agent_executions`;
 - testes automatizados;
-- documentação `docs/AGENT_HANDOFFS.md`.
+- documentação `docs/AGENT_EXECUTIONS.md`.
 
-Allowlist do marco:
-- `read_context`;
-- `read_repository`;
-- `modify_worktree`;
-- `run_tests`;
-- `create_branch`;
-- `create_commit`;
-- `create_pull_request`.
+O M8.2 não inicia agente, não executa comandos e não cria/modifica branch, commit, PR ou CI.
 
-Nunca implicitamente autorizados:
-- merge;
-- deploy;
-- publicação;
-- escrita em Drive/Calendar;
-- escrita em outros serviços externos.
-
-O M8.1 ainda não chama um executor real; ele registra e exporta o envelope auditável.
-
-### M8.2 — acompanhamento de execução
+### M8.3 — verificação externa somente leitura
 Status: **próximo marco**.
 
-Objetivo: acompanhar uma execução real iniciada por fluxo autorizado sem transformar o Segundo Cérebro em executor autônomo irrestrito.
+Objetivo: transformar referências técnicas já registradas em evidências verificáveis por leitura de fontes externas já conectadas, sem ampliar permissões de escrita.
 
 Possíveis entregas:
-- associação do handoff a branch/commit/PR existentes;
-- acompanhamento de CI e estado do PR;
-- heartbeat/progresso estruturado;
-- comparação entre critérios aprovados e resultado observado;
-- registro de evidências de conclusão;
-- follow-ups sugeridos;
-- nenhuma promoção automática para merge/deploy/publicação;
-- política separada para qualquer efeito externo adicional.
+- correlacionar `commit_sha` e `pr_url` com o GitHub Connector;
+- ler estado atual de PR e checks/Actions associados;
+- registrar observações como eventos de verificação;
+- anexar evidência verificável de CI a um critério somente por regra explícita;
+- detectar referência ausente, divergente ou stale;
+- manter proveniência e timestamp da leitura;
+- nenhuma criação/edição de branch, commit ou PR;
+- nenhum merge/deploy/publicação;
+- nenhuma promoção automática de evidência ambígua.
+
+### M8.4 — executor controlado
+Status: **futuro/condicional**.
+
+Somente após M8.3 e definição de políticas específicas por ação. Qualquer adapter de execução deverá respeitar a allowlist do handoff, registrar cada efeito e manter merge/deploy/publicação em autorização separada.
 
 ## Regra de evolução
 
@@ -170,5 +143,6 @@ Não adicionar complexidade de IA ou autonomia antes de existir:
 3. rastreabilidade;
 4. teste de recuperação;
 5. métrica de contexto;
-6. autorização humana explícita para ações com efeito externo;
-7. evidência verificável antes de marcar execução como concluída.
+6. autorização humana explícita para efeitos externos;
+7. evidência verificável antes de marcar execução como concluída;
+8. política específica para cada nova capacidade de escrita.

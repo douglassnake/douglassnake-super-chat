@@ -8,12 +8,13 @@ from app.agent_routes import router as agent_router
 from app.core.config import get_settings
 from app.dashboard_routes import router as dashboard_router
 from app.evaluation_routes import router as evaluation_router
+from app.execution_routes import router as execution_router
 from app.handoff_routes import router as handoff_router
 from app.routes import router
 from app.session_routes import router as session_router
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="0.8.1")
+app = FastAPI(title=settings.app_name, version="0.8.2")
 
 
 @app.get("/health")
@@ -32,6 +33,7 @@ app.include_router(dashboard_router)
 app.include_router(evaluation_router)
 app.include_router(agent_router)
 app.include_router(handoff_router)
+app.include_router(execution_router)
 
 web_dir = Path(__file__).resolve().parent.parent / "web"
 app.mount("/app", StaticFiles(directory=web_dir, html=True), name="web")
