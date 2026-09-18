@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -96,7 +96,6 @@ def test_session_delta_requires_confirmation_before_mutating_memory(
     delta_id = delta["id"]
     assert delta["status"] == "pending"
 
-    # Pending delta exists, but operational memory has not changed yet.
     snapshot_before = client.get(f"/projects/{project_id}/snapshot").json()
     assert snapshot_before["project"]["status"] == "planning"
     assert snapshot_before["project"]["next_action"] == "Revisar sessão"
@@ -147,9 +146,9 @@ def test_session_delta_requires_confirmation_before_mutating_memory(
         assert db.scalar(select(func.count(SessionSummary.id))) == 1
         assert db.scalar(select(func.count(Decision.id))) == 1
         assert db.scalar(select(func.count(Task.id))) == 2
-        stored_delta = db.get(SessionDelta, delta_id)
-        # direct DB get with string is intentionally avoided; API assertions cover state.
-        assert stored_delta is None or stored_delta.status == "applied"
+        stored_delta = db.get(SessionDelta, UUID(delta_id))
+        assert stored_delta is not None
+        assert stored_delta.status == "applied"
 
 
 def test_discarded_delta_cannot_be_applied(
