@@ -172,6 +172,10 @@ def test_release_complete_and_markdown_are_controlled(
     assert first_markdown.status_code == 200
     assert first_markdown.text == second_markdown.text
     assert "# Agent Handoff" in first_markdown.text
+    assert "## Contexto selecionado" in first_markdown.text
+    assert "Handoff explícito" in first_markdown.text
+    assert "context-secret" not in first_markdown.text
+    assert "[REDACTED]" in first_markdown.text
     assert "`run_tests`" in first_markdown.text
     assert "`merge`" in first_markdown.text
     assert "não executa ferramentas externas" in first_markdown.text.lower()
