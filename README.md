@@ -1,55 +1,36 @@
 # Douglas Snake — Super Chat
 
-Interface central do **Segundo Cérebro**: memória operacional, recuperação seletiva de contexto e integração com fontes técnicas sem depender do histórico bruto das conversas.
+O **Super Chat** é a interface operacional do **Segundo Cérebro**: memória persistente, recuperação seletiva de contexto, continuidade de projetos e integração com fontes técnicas sem depender do histórico bruto das conversas.
 
-## Objetivo
-
-Permitir que um projeto fique semanas sem atividade e seja retomado em poucos minutos, respondendo com contexto rastreável:
-
-- onde paramos;
-- o que já foi decidido;
-- qual é o estado atual;
-- o que está pendente;
-- qual é a próxima ação;
-- o que mudou tecnicamente;
-- quais fontes sustentam o contexto.
-
-## Arquitetura atual
+## Fluxo atual
 
 ```text
-Usuário / agente
+Usuário
   ↓
-SessionDelta pendente ── preview / confirmação
-  ↓ apply
-Super Chat API
+Interface Web / API
   ↓
-Memória operacional (PostgreSQL)
-  ├── projetos
-  ├── decisões
-  ├── tarefas
-  ├── resumos
-  ├── context_items
-  ├── events
-  └── session_deltas
-  ↓
+Projeto
+  ├── status e próxima ação
+  ├── tarefas e decisões
+  ├── Session Memory
+  └── fontes técnicas
+        ↓
 Context Engine
-  ├── memória confirmada
-  └── GitHub Connector
-       ├── commits
-       ├── PRs
-       ├── Issues
-       └── Actions
-  ↓
-Pacote mínimo de contexto
-  ↓
+  ├── minimal   1.800 tokens
+  ├── standard  5.000 tokens
+  └── deep     15.000 tokens
+        ↓
+Pacote de contexto rastreável
+        ↓
 Modelo de IA / agente
 ```
 
-## Estado dos marcos
+Uma sessão longa pode ser consolidada em um `SessionDelta`. O delta nasce como `pending`, pode ser pré-visualizado e somente altera a memória operacional depois de confirmação explícita em `apply`.
+
+## Marcos implementados
 
 ### M1 — Memória operacional
 
-Implementado:
 - FastAPI;
 - PostgreSQL + SQLAlchemy 2;
 - Alembic;
@@ -60,66 +41,102 @@ Implementado:
 
 ### M2 — Context Engine v1
 
-Implementado:
 - perfis `minimal`, `standard` e `deep`;
 - ranking determinístico;
 - deduplicação;
+- compactação;
 - orçamento estimado de tokens;
-- compactação de itens grandes;
-- rastreabilidade;
+- rastreabilidade de fontes;
 - auditoria em `context_runs`;
-- comando/API `continue`.
-
-| Perfil | Limite de memória injetada |
-|---|---:|
-| `minimal` | 1.800 tokens |
-| `standard` | 5.000 tokens |
-| `deep` | 15.000 tokens |
+- endpoint `continue`.
 
 ### M3 — GitHub Connector
 
-Implementado:
 - vínculo projeto ↔ repositório;
-- GitHub somente leitura;
+- leitura somente de GitHub;
 - commits recentes;
 - PRs abertos;
 - Issues abertas;
 - Actions recentes;
-- normalização em `events`;
 - sincronização idempotente;
-- eventos técnicos recuperáveis pelo Context Engine.
+- normalização técnica para `events`;
+- eventos GitHub recuperáveis pelo Context Engine.
 
 ### M4 — Session Memory
 
-Implementado na branch `codex/m4-session-memory`:
 - `SessionDelta` persistente;
-- estado `pending`, `applied` ou `discarded`;
-- preview antes de persistir efeitos;
-- decisões propostas;
-- tarefas propostas;
+- estados `pending`, `applied` e `discarded`;
+- preview;
+- decisões/tarefas propostas;
 - conclusão de tarefas existentes;
-- alteração de status;
-- próxima ação;
+- mudança de status e próxima ação;
 - aplicação transacional;
 - idempotência por `project_id + session_key`;
-- confirmação humana explícita antes de alterar a memória operacional.
+- confirmação humana antes de alterar a memória.
+
+### M5 — Interface Web
+
+A branch `codex/m5-web-interface` entrega a primeira interface utilizável do Super Chat:
+
+- dashboard responsivo em `/app/`;
+- lista e seleção de projetos;
+- Health Score determinístico;
+- status, próxima ação e tarefas abertas;
+- fontes vinculadas e eventos técnicos recentes;
+- comando **Continuar projeto**;
+- escolha de perfil de contexto;
+- visualização de tokens selecionados/candidatos;
+- SessionDeltas pendentes;
+- preview visual;
+- aplicar/descartar somente após confirmação;
+- sincronização manual do GitHub.
+
+## Health Score
+
+O Health Score começa em 100 e aplica penalidades determinísticas. Os fatores atuais incluem:
+
+- projeto sem próxima ação;
+- tarefas vencidas;
+- tarefas bloqueadas;
+- inatividade;
+- SessionDeltas aguardando revisão;
+- falhas recentes de CI registradas pelo GitHub Connector.
+
+Faixas:
+
+| Score | Estado |
+|---:|---|
+| 85–100 | `healthy` |
+| 65–84 | `attention` |
+| 40–64 | `risk` |
+| 0–39 | `critical` |
+
+O score é explicável: a API devolve os motivos e o impacto de cada penalidade.
 
 ## Executar com Docker
 
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m4-session-memory
+git checkout codex/m5-web-interface
 cp .env.example .env
 
 docker compose up --build
 ```
 
-API: `http://localhost:8000`
+Interface Web:
 
-OpenAPI: `http://localhost:8000/docs`
+```text
+http://localhost:8000/app/
+```
 
-Health:
+OpenAPI:
+
+```text
+http://localhost:8000/docs
+```
+
+Health check:
 
 ```bash
 curl http://localhost:8000/health
@@ -127,54 +144,26 @@ curl http://localhost:8000/health
 
 ## GitHub Connector
 
-Para repositórios públicos, a API pode funcionar sem token, sujeita aos limites públicos do GitHub. Para repositórios privados ou maior limite, configure localmente:
+Para repositórios públicos, a leitura pode funcionar sem token, sujeita aos limites públicos do GitHub. Para repositórios privados ou maior limite de API, configure localmente:
 
 ```dotenv
 GITHUB_TOKEN=seu_token_local
 ```
 
-O token é usado apenas no header de autenticação e não deve ser salvo no banco, em eventos, contexto ou no repositório.
+O token é lido apenas do ambiente. Ele não deve ser persistido no banco, nos eventos, no contexto ou no repositório.
 
-Depois de vincular uma fonte `github` no projeto:
+Depois de vincular uma fonte `github`:
 
 ```text
 POST /projects/{project_id}/github/sync
 ```
 
-A sincronização transforma atividade técnica em eventos compactos; o código-fonte do repositório não é copiado para o PostgreSQL.
-
-## Session Memory
-
-Uma sessão longa pode ser consolidada em um delta:
-
-```text
-POST /projects/{project_id}/session-deltas
-```
-
-Antes de aplicar:
-
-```text
-GET /session-deltas/{delta_id}/preview
-```
-
-Após revisão explícita:
-
-```text
-POST /session-deltas/{delta_id}/apply
-```
-
-Ou descarte:
-
-```text
-POST /session-deltas/{delta_id}/discard
-```
-
-Um delta `pending` não modifica o status, decisões, tarefas ou resumo do projeto. Somente `apply` transforma as propostas em memória operacional.
-
 ## Endpoints principais
 
 ```text
 GET    /health
+GET    /dashboard
+GET    /projects/{project_id}/overview
 
 POST   /projects
 GET    /projects
@@ -205,14 +194,6 @@ POST   /session-deltas/{delta_id}/apply
 POST   /session-deltas/{delta_id}/discard
 ```
 
-## Continuar projeto
-
-```text
-GET /projects/{project_id}/continue?profile=standard
-```
-
-O Context Engine seleciona apenas memória útil para a consulta: status, próxima ação, resumos, decisões, tarefas, notas/fatos e eventos GitHub relevantes. O pacote também informa tokens candidatos, tokens selecionados, itens escolhidos e fontes.
-
 ## Testes
 
 ```bash
@@ -223,28 +204,20 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-A suíte usa SQLite em memória e dados fictícios. Os testes do GitHub usam um leitor simulado; não dependem de rede nem de credenciais reais.
+A suíte usa SQLite em memória e dados fictícios. Testes do GitHub usam leitor simulado; não dependem de rede nem de credenciais reais.
 
 ## Privacidade
 
-Este repositório é público. Portanto:
-- não versionar `.env`;
-- não versionar tokens ou senhas;
+O repositório é público. Portanto:
+
+- não versionar `.env`, tokens ou senhas;
 - não versionar conversas pessoais;
 - não versionar dumps reais do PostgreSQL;
 - não versionar documentos privados;
-- usar dados fictícios nos testes.
+- usar apenas dados fictícios nos testes.
 
-A memória real deve ficar no PostgreSQL da instalação privada.
+A memória real deve permanecer no PostgreSQL da instalação privada.
 
-## Documentação
+## Próximo marco
 
-- `docs/ARCHITECTURE.md`
-- `docs/DATA_MODEL.md`
-- `docs/CONTEXT_ENGINE.md`
-- `docs/SESSION_MEMORY.md`
-- `docs/ROADMAP.md`
-
-## Próxima evolução
-
-A próxima etapa é a interface web: dashboard, projetos, tela de contexto, revisão visual de `SessionDelta`, Health Score e comando **Continuar projeto**.
+**M6 — Google Drive + Calendar**: associar documentos e compromissos aos projetos e recuperar somente o necessário pelo Context Engine.
