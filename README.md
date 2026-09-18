@@ -1,6 +1,6 @@
 # Douglas Snake — Super Chat
 
-O **Super Chat** é a interface operacional do **Segundo Cérebro**: memória persistente, continuidade de projetos, recuperação seletiva de contexto e preparação segura de trabalho para agentes.
+O **Super Chat** é a interface operacional do **Segundo Cérebro**: memória persistente, continuidade de projetos, recuperação seletiva de contexto e preparação/auditoria segura de trabalho para agentes.
 
 ## Arquitetura atual
 
@@ -12,88 +12,70 @@ Web / API
 Projeto
   ├── memória operacional (PostgreSQL)
   ├── Session Memory
-  ├── GitHub
-  ├── Google Drive
-  └── Google Calendar
+  ├── GitHub (leitura)
+  ├── Google Drive (leitura sob demanda)
+  └── Google Calendar (leitura)
         ↓
 Context Engine
   ├── minimal   1.800 tokens
   ├── standard  5.000 tokens
   └── deep     15.000 tokens
         ↓
-Pacote mínimo e rastreável de contexto
-        ↓
 Agent Task Pack
-  ├── objetivo
-  ├── critérios de aceite explícitos
-  ├── guardrails
-  ├── fontes
-  ├── orçamento de tokens
-  └── fingerprint SHA-256
-        ↓
-preview → pending → aprovação humana → approved
+pending → aprovação humana → approved
         ↓
 Agent Handoff
 prepared → release explícito → released
         ↓
+Agent Execution
+running
+  ├── progresso
+  ├── referências técnicas
+  ├── evidências por critério
+  └── log append-only
+        ↓
 completed | failed | cancelled
 ```
 
-Um `AgentTaskPack` aprovado está **pronto para handoff**, mas não autoriza execução. O M8.1 separa a liberação operacional: somente um `AgentHandoff` em `released` libera as ações explicitamente listadas no próprio handoff.
+A autorização é separada por camada:
 
-## Marcos M1–M8.1
+```text
+Task Pack approved  = pronto para handoff
+Handoff released    = ações listadas explicitamente foram liberadas
+Execution completed = critérios de aceite possuem evidência explícita passed
+```
+
+Nenhuma dessas etapas autoriza implicitamente merge, deploy, publicação ou escrita em serviços externos.
+
+## Marcos M1–M8.2
 
 - **M1 — Memória operacional:** projetos, decisões, tarefas, resumos, PostgreSQL, Alembic e Docker.
 - **M2 — Context Engine:** ranking, deduplicação, compactação, orçamento de tokens e `continue`.
 - **M3 — GitHub Connector:** commits, PRs, Issues e Actions em modo somente leitura.
-- **M4 — Session Memory:** `SessionDelta` revisável e aplicação somente após confirmação.
+- **M4 — Session Memory:** `SessionDelta` revisável e aplicação após confirmação.
 - **M5 — Interface Web:** dashboard, Health Score, contexto/tokens e revisão visual dos deltas.
 - **M6 — Google Context:** Drive sob demanda + Calendar normalizado em eventos.
 - **M7.0 — Retrieval Benchmark:** precision/recall, cobertura, compressão, latência e baseline reproduzível.
-- **M8.0 — Agent Task Packs:** preparação rastreável de tarefas para agentes com critérios de aceite, guardrails, redaction de secrets e aprovação humana.
-- **M8.1 — Agent Handoffs:** envelope de entrega auditável, permissões explícitas, release separado e registro de conclusão/falha/cancelamento.
+- **M8.0 — Agent Task Packs:** objetivo, critérios de aceite, guardrails, contexto, fontes e fingerprint.
+- **M8.1 — Agent Handoffs:** executor/alvo, allowlist de ações, release explícito e trilha de auditoria.
+- **M8.2 — Agent Executions:** progresso, referências observadas, eventos append-only e gate de evidências por critério.
 
 ## Agent Task Packs
 
-O M8.0 transforma o contexto selecionado em um artefato determinístico para Codex/agentes. Os critérios de aceite são obrigatórios e devem ser fornecidos explicitamente; o sistema não os inventa.
-
-Estados:
+Um `AgentTaskPack` aprovado está pronto para originar handoff, mas permanece:
 
 ```text
-preview
-   ↓
-pending
-   ├── approve → approved (pronto para handoff)
-   └── cancel  → cancelled
-```
-
-No nível do pack:
-
-```text
-ready_for_handoff = true   # somente quando approved
+ready_for_handoff = true
 authorized_for_execution = false
 ```
 
-O pack inclui snapshot do projeto, objetivo, critérios de aceite, restrições, áreas sugeridas pelo solicitante, contexto selecionado, referências de origem, orçamento de tokens e fingerprint SHA-256.
+Critérios de aceite são explícitos e obrigatórios; o sistema não os inventa. O pack preserva contexto selecionado, fontes, budget e fingerprint SHA-256.
 
 Veja `docs/AGENT_TASK_PACKS.md`.
 
 ## Agent Handoffs
 
-Um handoff só pode nascer de um Task Pack `approved`. Ele registra executor, alvo, fingerprint do pack, ações permitidas e trilha temporal.
-
-Fluxo:
-
-```text
-prepared
-   ↓ release explícito
-released
-   ├── complete → completed
-   ├── fail     → failed
-   └── cancel   → cancelled
-```
-
-Allowlist do M8.1:
+Um handoff só nasce de pack `approved`. Ações reconhecidas pelo M8.1:
 
 ```text
 read_context
@@ -105,15 +87,47 @@ create_commit
 create_pull_request
 ```
 
-Merge, deploy, publicação e escrita em Drive/Calendar ou outros serviços externos nunca são autorizados implicitamente pelo handoff. Os endpoints do M8.1 **não executam** essas ações; registram apenas o envelope, a liberação e o resultado.
-
-O Markdown de handoff recupera o contexto selecionado do Task Pack original e valida o fingerprint congelado antes da exportação.
+Ações como `merge`, `deploy`, `publish`, `write_drive`, `write_calendar` e escrita genérica em serviço externo nunca são implicitamente autorizadas.
 
 Veja `docs/AGENT_HANDOFFS.md`.
 
+## Agent Executions
+
+Uma execução rastreada só pode nascer de um handoff `released` e existe no máximo uma por handoff.
+
+O estado atual guarda progresso, etapa e referências observadas de branch/commit/PR. Essas referências são apenas metadados: os endpoints do M8.2 não criam nem modificam recursos externos.
+
+Cada alteração relevante gera um `AgentExecutionEvent` append-only com sequência crescente:
+
+```text
+started
+progress
+technical_refs
+criterion_evidence
+status
+```
+
+Evidências apontam para um índice real de critério do Task Pack e informam explicitamente `passed` ou `failed`. A evidência de maior sequência determina o estado atual daquele critério.
+
+A conclusão é bloqueada enquanto qualquer critério estiver `pending` ou `failed`:
+
+```json
+{
+  "total": 2,
+  "passed": 2,
+  "failed": 0,
+  "pending": 0,
+  "complete_allowed": true
+}
+```
+
+Quando existe execução rastreada, os endpoints diretos de `complete/fail/cancel` do handoff são bloqueados para impedir bypass do gate de evidências.
+
+Veja `docs/AGENT_EXECUTIONS.md`.
+
 ## Recuperação e economia de tokens
 
-O Context Engine mede o conjunto candidato e o pacote efetivamente selecionado. No baseline sintético M7.0, o cenário de pressão do perfil `minimal` produziu:
+No baseline sintético M7.0, o cenário de pressão do perfil `minimal` produziu:
 
 ```text
 13.926 tokens candidatos
@@ -122,81 +136,28 @@ O Context Engine mede o conjunto candidato e o pacote efetivamente selecionado. 
 recall@2 = 1,0 no fixture
 ```
 
-Esse resultado valida o funcionamento do budgeter em um cenário artificial. Ele não deve ser interpretado como garantia de desempenho em projetos reais.
-
-Para executar o benchmark:
+O resultado valida o mecanismo de budget em fixture sintético; não é garantia de desempenho em dados reais.
 
 ```bash
 python scripts/context_benchmark.py benchmarks/context_cases.json
 ```
 
-A avaliação também está disponível pela API:
+A busca semântica/pgvector do M7.1 continua condicionada a benchmark privado com consultas reais.
 
-```text
-POST /evaluation/context
-```
+## Redaction e privacidade
 
-O gabarito (`expected_source_refs`) é explícito, permitindo medir `precision@k`, `recall@k`, coverage, tokens candidatos/selecionados e latência.
+O repositório é público. Memória real, `.env`, credenciais, conversas, dumps do banco e documentos privados não devem ser versionados.
 
-Veja `docs/RETRIEVAL_BENCHMARK.md`.
+A barreira de redaction cobre padrões textuais e também chaves sensíveis em JSON estruturado, como `token`, `secret`, `password`, `access_token`, `refresh_token`, `api_key` e `authorization`.
 
-## Google Drive
-
-Uma fonte documental usa:
-
-```json
-{
-  "source_type": "google_drive",
-  "external_id": "GOOGLE_FILE_ID",
-  "label": "Documento do projeto"
-}
-```
-
-O sistema persiste somente referência e metadados do arquivo. Quando o Context Engine precisa responder, o texto é recuperado sob demanda, dividido em janelas e somente os trechos lexicalmente relevantes competem pelo orçamento de tokens.
-
-A versão M6 extrai texto diretamente de:
-- Google Docs, por exportação `text/plain`;
-- arquivos `text/*`;
-- JSON e XML.
-
-Outros formatos permanecem referenciados por metadados nesta versão. O conteúdo integral do Drive **não é gravado** em `context_items`.
-
-## Google Calendar
-
-Uma fonte temporal usa:
-
-```json
-{
-  "source_type": "google_calendar",
-  "external_id": "primary",
-  "label": "Agenda principal"
-}
-```
-
-A sincronização:
-
-```text
-POST /projects/{project_id}/google/sync
-```
-
-normaliza compromissos como eventos compactos `google_calendar.event`. O sync é idempotente: eventos existentes são ignorados quando não mudaram e atualizados quando o conteúdo realmente mudou.
-
-## OAuth Google
-
-O conector é somente leitura. As credenciais ficam exclusivamente no ambiente da instalação privada.
-
-Pode-se fornecer `GOOGLE_ACCESS_TOKEN` temporário ou `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `GOOGLE_REFRESH_TOKEN`.
-
-Nenhum access token, refresh token ou client secret deve ser persistido no banco, no contexto, em logs de teste ou no repositório.
-
-Se uma fonte Drive estiver vinculada mas OAuth não estiver disponível, o comando `continue` continua funcionando com a memória local; apenas o contexto remoto do Drive é omitido.
+Redaction é defesa adicional, não autorização para inserir secrets no sistema.
 
 ## Executar
 
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-1-agent-handoffs
+git checkout codex/m8-2-execution-tracking
 cp .env.example .env
 docker compose up --build
 ```
@@ -215,7 +176,6 @@ GET    /projects/{project_id}/continue
 POST   /context/build
 POST   /evaluation/context
 
-POST   /projects/{project_id}/sources
 POST   /projects/{project_id}/github/sync
 POST   /projects/{project_id}/google/sync
 
@@ -226,27 +186,25 @@ POST   /session-deltas/{delta_id}/discard
 
 POST   /agent-task-packs/preview
 POST   /agent-task-packs
-GET    /agent-task-packs/{pack_id}
 POST   /agent-task-packs/{pack_id}/approve
-POST   /agent-task-packs/{pack_id}/cancel
 GET    /agent-task-packs/{pack_id}/markdown
 
 POST   /agent-task-packs/{pack_id}/handoffs
-GET    /agent-task-packs/{pack_id}/handoffs
-GET    /agent-handoffs/{handoff_id}
 POST   /agent-handoffs/{handoff_id}/release
-POST   /agent-handoffs/{handoff_id}/complete
-POST   /agent-handoffs/{handoff_id}/fail
-POST   /agent-handoffs/{handoff_id}/cancel
 GET    /agent-handoffs/{handoff_id}/markdown
+
+POST   /agent-handoffs/{handoff_id}/execution
+GET    /agent-handoffs/{handoff_id}/execution
+GET    /agent-executions/{execution_id}
+GET    /agent-executions/{execution_id}/events
+POST   /agent-executions/{execution_id}/progress
+POST   /agent-executions/{execution_id}/technical-refs
+POST   /agent-executions/{execution_id}/evidence
+POST   /agent-executions/{execution_id}/complete
+POST   /agent-executions/{execution_id}/fail
+POST   /agent-executions/{execution_id}/cancel
 ```
 
-## Privacidade
+## Próxima etapa
 
-O repositório é público. Código, templates e dados fictícios podem ser versionados; memória real, `.env`, credenciais, conversas, dumps do banco e documentos privados não.
-
-## Próximas etapas
-
-O **M7.1** (embeddings/pgvector) continua condicional a um benchmark privado com consultas reais.
-
-O próximo incremento de automação é o **M8.2 — acompanhamento de execução**, mantendo a separação entre contexto, aprovação do Task Pack, release do handoff e autorização específica para qualquer efeito externo. Merge, deploy e publicação continuam fora do padrão automático.
+O próximo incremento planejado é **M8.3 — verificação externa somente leitura**: correlacionar referências já registradas de PR/commit com GitHub e Actions para anexar evidências verificáveis, sem criar ou alterar recursos externos e sem promover automaticamente merge/deploy/publicação.
