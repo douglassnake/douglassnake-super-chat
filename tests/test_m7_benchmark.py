@@ -122,7 +122,7 @@ def test_fixture_dataset_runs_without_external_services() -> None:
     report = run_benchmark_dataset(dataset)
 
     assert report["dataset"] == "context-engine-baseline-v1"
-    assert report["case_count"] == 3
+    assert report["case_count"] == 4
     assert set(report["profiles"]) == {"minimal", "standard", "deep"}
     for case in report["results"]:
         metrics = case["metrics"]
@@ -130,6 +130,10 @@ def test_fixture_dataset_runs_without_external_services() -> None:
         assert 0.0 <= metrics["recall_at_k"] <= 1.0
         assert 0.0 <= metrics["coverage"] <= 1.0
         assert metrics["candidate_tokens"] >= metrics["selected_tokens"]
+    pressure = next(case for case in report["results"] if case["name"] == "Token pressure minimal")
+    assert pressure["metrics"]["recall_at_k"] == 1.0
+    assert pressure["metrics"]["compression_ratio"] > 0
+    assert pressure["metrics"]["context_efficiency"] < 1
     assert report["profiles"]["minimal"]["mean_recall_at_k"] > 0
     assert report["profiles"]["standard"]["mean_recall_at_k"] > 0
     assert report["profiles"]["deep"]["mean_recall_at_k"] > 0
