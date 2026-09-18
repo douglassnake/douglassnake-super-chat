@@ -91,6 +91,14 @@ def recency_score(timestamp: datetime | None, now: datetime) -> float:
     return 1.0 / (1.0 + age_days / 30.0)
 
 
+def timestamp_rank(timestamp: datetime | None) -> float:
+    if timestamp is None:
+        return 0.0
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.timestamp()
+
+
 def render_candidate(candidate: Candidate) -> str:
     parts = [candidate.kind]
     if candidate.title:
@@ -138,7 +146,6 @@ def deduplicate(candidates: list[Candidate]) -> list[Candidate]:
 def compact_candidate(candidate: Candidate, token_limit: int) -> Candidate | None:
     if token_limit < 48:
         return None
-    # Keep a safety margin for kind/title/source metadata.
     metadata_tokens = estimate_tokens("\n".join(filter(None, [candidate.kind, candidate.title, candidate.source_ref]))) + 6
     content_budget = token_limit - metadata_tokens
     if content_budget < 24:
@@ -151,6 +158,12 @@ def compact_candidate(candidate: Candidate, token_limit: int) -> Candidate | Non
     if compacted.estimated_tokens > token_limit:
         return None
     return compacted
+
+
+def compact_project_text(value: str | None, max_chars: int = 1200) -> str | None:
+    if value is None or len(value) <= max_chars:
+        return value
+    return value[: max_chars - 1].rstrip() + "…"
 
 
 def _summary_candidates(db: Session, project_id: UUID, limit: int) -> list[Candidate]:
@@ -282,27 +295,25 @@ def build_context_package(
     scored = [score_candidate(candidate, query, now) for candidate in raw_candidates]
     unique = deduplicate(scored)
     unique.sort(
-        key=lambda item: (
-            item.score,
-            item.importance,
-            item.timestamp or datetime.min.replace(tzinfo=timezone.utc),
-        ),
+        key=lambda item: (item.score, item.importance, timestamp_rank(item.timestamp)),
         reverse=True,
     )
 
+    project_description = compact_project_text(project.description)
+    project_next_action = compact_project_text(project.next_action)
     project_text = "\n".join(
         filter(
             None,
             [
                 project.name,
-                project.description,
+                project_description,
                 f"Status: {project.status}",
-                f"Próxima ação: {project.next_action}" if project.next_action else None,
-                f"Consulta: {query}" if query else None,
+                f"Próxima ação: {project_next_action}" if project_next_action else None,
             ],
         )
     )
-    # Fixed allowance covers JSON keys and structural metadata in the final package.
+    # The user query is not counted twice: it already exists in the model request.
+    # The budget below is only for injected memory/context.
     base_tokens = estimate_tokens(project_text) + 120
     max_tokens = int(config["max_tokens"])
     remaining = max(0, max_tokens - base_tokens)
@@ -351,10 +362,10 @@ def build_context_package(
             "id": project.id,
             "slug": project.slug,
             "name": project.name,
-            "description": project.description,
+            "description": project_description,
             "status": project.status,
             "priority": project.priority,
-            "next_action": project.next_action,
+            "next_action": project_next_action,
             "last_activity_at": project.last_activity_at,
         },
         "query": query,
