@@ -18,7 +18,7 @@ aprovação humana
 approved / pronto para handoff
 ```
 
-`approved` significa que o pacote foi revisado para handoff. Não significa autorização automática para merge, deploy, publicação ou escrita em serviços externos.
+`approved` significa que o pacote foi revisado e está pronto para originar um handoff. Não significa autorização de execução. A liberação operacional acontece somente no M8.1, em um `AgentHandoff` explicitamente colocado em `released`.
 
 ## Conteúdo do pack
 
@@ -110,6 +110,7 @@ Um pack idêntico já persistido gera conflito em vez de duplicar o registro.
 Criado e persistido, mas ainda não aprovado para handoff.
 
 ```text
+ready_for_handoff = false
 authorized_for_execution = false
 ```
 
@@ -118,14 +119,20 @@ authorized_for_execution = false
 Aprovado explicitamente. Repetir a aprovação é idempotente.
 
 ```text
-authorized_for_execution = true
+ready_for_handoff = true
+authorized_for_execution = false
 ```
 
-Ainda assim, o Markdown mantém o guardrail de que o pack, sozinho, não autoriza merge/deploy/publicação.
+O pack aprovado pode originar um `AgentHandoff`; ele ainda não libera nenhuma ação operacional.
 
 ### `cancelled`
 
 Cancelado explicitamente. Repetir cancelamento é idempotente. Um pack cancelado não pode ser aprovado e um pack aprovado não pode ser cancelado pelo mesmo endpoint.
+
+```text
+ready_for_handoff = false
+authorized_for_execution = false
+```
 
 ## Endpoints
 
@@ -166,4 +173,4 @@ O M8.0 **não**:
 - escreve em Drive/Calendar;
 - transforma `approved` em execução autônoma.
 
-Essas capacidades, se adicionadas depois, devem ter políticas de autorização próprias e trilha de auditoria.
+A autorização operacional passa pelo `AgentHandoff` do M8.1. Mesmo ali, merge, deploy, publicação e escrita externa permanecem fora da autorização implícita.
