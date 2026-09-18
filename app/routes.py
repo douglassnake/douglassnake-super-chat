@@ -6,9 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.context_engine import build_context_package
 from app.database import get_db
-from app.models import Decision, Project, SessionSummary, Task, utcnow
+from app.models import ContextItem, Decision, Project, SessionSummary, Task, utcnow
 from app.schemas import (
+    ContextBuildRequest,
+    ContextItemCreate,
+    ContextItemRead,
+    ContextPackage,
+    ContextProfile,
     DecisionCreate,
     DecisionRead,
     ProjectCreate,
@@ -208,3 +214,53 @@ def get_project_snapshot(project_id: UUID, db: Session = Depends(get_db)) -> Pro
         open_tasks=[TaskRead.model_validate(item) for item in open_tasks],
         generated_at=datetime.now(timezone.utc),
     )
+
+
+@router.post(
+    "/projects/{project_id}/context-items",
+    response_model=ContextItemRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_context_item(
+    project_id: UUID,
+    payload: ContextItemCreate,
+    db: Session = Depends(get_db),
+) -> ContextItem:
+    project = get_project_or_404(db, project_id)
+    item = ContextItem(project_id=project_id, **payload.model_dump())
+    project.last_activity_at = utcnow()
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.get("/projects/{project_id}/context-items", response_model=list[ContextItemRead])
+def list_context_items(project_id: UUID, db: Session = Depends(get_db)) -> list[ContextItem]:
+    get_project_or_404(db, project_id)
+    stmt = (
+        select(ContextItem)
+        .where(ContextItem.project_id == project_id)
+        .order_by(ContextItem.importance.desc(), ContextItem.updated_at.desc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+@router.post("/context/build", response_model=ContextPackage)
+def build_context(payload: ContextBuildRequest, db: Session = Depends(get_db)) -> dict:
+    project = get_project_or_404(db, payload.project_id)
+    return build_context_package(db, project, payload.query, payload.profile)
+
+
+@router.get("/projects/{project_id}/continue", response_model=ContextPackage)
+def continue_project(
+    project_id: UUID,
+    profile: ContextProfile = Query(default="standard"),
+    query: str = Query(
+        default="continuar projeto status próxima ação decisões tarefas pendências bloqueios",
+        max_length=4000,
+    ),
+    db: Session = Depends(get_db),
+) -> dict:
+    project = get_project_or_404(db, project_id)
+    return build_context_package(db, project, query, profile)

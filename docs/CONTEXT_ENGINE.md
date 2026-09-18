@@ -2,84 +2,125 @@
 
 ## Propósito
 
-Montar o menor pacote de contexto capaz de responder corretamente à intenção atual, preservando rastreabilidade e reduzindo repetição de histórico.
+Montar o menor pacote de memória capaz de responder à intenção atual, preservando rastreabilidade e evitando carregar o histórico bruto do projeto.
 
-## Níveis de contexto
+## Perfis implementados no M2
 
-### `minimal`
-Uso: perguntas simples e leitura rápida.
+| Perfil | Orçamento de memória | Máximo de itens | Uso |
+|---|---:|---:|---|
+| `minimal` | 1.800 tokens | 10 | perguntas simples e retomada rápida |
+| `standard` | 5.000 tokens | 25 | continuidade normal de projeto |
+| `deep` | 15.000 tokens | 60 | arquitetura, debugging e revisão profunda |
 
-Inclui:
-- identificação do projeto;
-- status atual;
-- próxima ação;
-- até 3 decisões recentes;
-- até 5 tarefas abertas.
+O orçamento é aplicado ao **contexto injetado**. A pergunta original do usuário não é contabilizada duas vezes, pois já faz parte da requisição ao modelo.
 
-Meta: 1–2k tokens.
+## Fontes recuperadas
 
-### `standard`
-Uso: continuidade normal do projeto.
+O M2 usa:
+- identificação/status/próxima ação do projeto;
+- resumos de sessão;
+- decisões ativas;
+- tarefas abertas;
+- `context_items` válidos.
 
-Inclui:
-- tudo do `minimal`;
-- resumo consolidado;
-- decisões relevantes;
-- backlog prioritário;
-- últimos eventos técnicos;
-- referências externas necessárias.
+GitHub, Drive e Calendar entram como conectores nas próximas etapas; quando normalizados em memória, passam pelo mesmo mecanismo de seleção.
 
-Meta: 3–6k tokens.
-
-### `deep`
-Uso: arquitetura, debugging e revisão de decisões.
-
-Inclui:
-- histórico resumido ampliado;
-- decisões correlatas;
-- documentação técnica;
-- eventos e fontes adicionais.
-
-Meta: 10–20k tokens.
-
-### `expanded`
-Uso excepcional.
-
-Recupera histórico/artefatos maiores somente quando os níveis menores não bastam.
-
-## Pipeline
+## Pipeline v1
 
 ```text
-UserMessage
+Pergunta
   ↓
-IntentResolver
+Projeto
   ↓
-ProjectResolver
+Candidate Retriever
+  ├── summaries
+  ├── decisions
+  ├── tasks
+  └── context_items
   ↓
-CandidateRetriever
-  ↓
-Scorer
+Scorer determinístico
   ↓
 Deduplicator
   ↓
-TokenBudgeter
+Token Budgeter
   ↓
-ContextPackageBuilder
+Context Package
+  ↓
+Auditoria em context_runs
 ```
 
-## Ranking
+## Ranking determinístico
 
-Cada item candidato recebe uma pontuação composta por:
-
-- relevância semântica;
-- prioridade da entidade;
+Cada candidato recebe score a partir de:
+- sobreposição lexical com a consulta;
+- importância;
 - recência;
-- força da fonte;
-- relação direta com o projeto;
-- estado aberto/pendente;
-- penalidade por redundância.
+- força do tipo de memória;
+- força da fonte.
 
-Uma implementação inicial pode usar pesos determinísticos antes de adicionar embeddings.
+Pesos atuais:
+
+```text
+relevância lexical  40%
+importância          25%
+recência             15%
+tipo de memória      10%
+força da fonte       10%
+```
+
+Embeddings/pgvector não fazem parte do M2. Primeiro serão coletadas métricas reais do ranking determinístico.
+
+## Deduplicação
+
+Itens com conteúdo normalizado idêntico são reduzidos a uma única ocorrência. Quando há duplicatas, permanece o candidato de maior score.
+
+## Controle de tokens
+
+A estimativa v1 é conservadora e independente de provedor:
+
+```text
+ceil((caracteres / 4) × 1,15)
+```
+
+O projeto recebe uma pequena reserva estrutural. Itens são adicionados por score enquanto houver orçamento. Um item relevante que exceda o espaço restante pode ser truncado deterministicamente; caso ainda não caiba, é omitido.
+
+## Endpoints
+
+### Criar memória recuperável
+
+```text
+POST /projects/{project_id}/context-items
+```
+
+### Inspecionar memória
+
+```text
+GET /projects/{project_id}/context-items
+```
+
+### Montar contexto para uma consulta
+
+```text
+POST /context/build
+```
+
+Exemplo:
+
+```json
+{
+  "project_id": "...",
+  "query": "onde paramos e qual a próxima ação?",
+  "profile": "standard"
+}
+```
+
+### Retomar projeto
+
+```text
+GET /projects/{project_id}/continue?profile=standard
+```
+
+Esse endpoint usa uma consulta operacional padrão voltada para status, próxima ação, decisões, tarefas, pendências e bloqueios.
 
 ## Estrutura de saída
 
@@ -91,56 +132,52 @@ Uma implementação inicial pode usar pesos determinísticos antes de adicionar 
     "status": "...",
     "next_action": "..."
   },
-  "summary": "...",
-  "decisions": [],
-  "tasks": [],
-  "events": [],
+  "query": "...",
+  "profile": "standard",
+  "items": [
+    {
+      "kind": "decision",
+      "title": "...",
+      "content": "...",
+      "source_type": "decision",
+      "source_ref": "...",
+      "score": 0.91,
+      "estimated_tokens": 120
+    }
+  ],
   "sources": [],
   "budget": {
-    "profile": "standard",
-    "estimated_tokens": 4200,
-    "max_tokens": 6000
+    "max_tokens": 5000,
+    "estimated_tokens": 1840,
+    "candidate_tokens": 9200,
+    "candidate_count": 37,
+    "selected_count": 12,
+    "remaining_tokens": 3160
   }
 }
 ```
 
-## Resumo incremental de sessão
+## Auditoria
 
-Ao encerrar ou consolidar uma sessão, gerar um `SessionDelta`:
+Cada construção gera um registro em `context_runs` com:
+- perfil;
+- consulta;
+- quantidade de candidatos;
+- quantidade selecionada;
+- tokens candidatos;
+- tokens selecionados;
+- duração aproximada.
 
-```json
-{
-  "project_id": "...",
-  "summary": "...",
-  "decisions_created": [],
-  "tasks_created": [],
-  "tasks_closed": [],
-  "status_change": null,
-  "next_action": "...",
-  "source_refs": []
-}
+Isso permitirá medir compressão e decidir, com dados, quando busca vetorial realmente for necessária.
+
+## Métrica central
+
+```text
+context_efficiency = selected_tokens / candidate_tokens
 ```
 
-O delta atualiza a memória operacional sem exigir reprocessamento completo da conversa.
+Quanto menor essa razão sem perda de qualidade na retomada do projeto, melhor o mecanismo está comprimindo a memória.
 
-## Regras de segurança
+## Próxima evolução
 
-- não incluir secrets no contexto;
-- não persistir credenciais recebidas em texto;
-- não indexar automaticamente arquivos privados sem autorização do conector;
-- manter referência para a origem de cada item relevante;
-- separar `source_text` de `generated_summary`;
-- permitir invalidar/resumir novamente memória derivada.
-
-## Métricas
-
-Registrar por montagem de contexto:
-- perfil solicitado;
-- quantidade de candidatos;
-- itens selecionados;
-- tokens estimados;
-- fontes usadas;
-- tempo de recuperação;
-- taxa de compressão aproximada.
-
-A métrica central é `context_efficiency = selected_tokens / candidate_tokens`.
+O M3 adicionará o GitHub como fonte técnica real, normalizando commits, PRs, Issues e Actions para que o Context Engine selecione apenas os eventos relevantes.
