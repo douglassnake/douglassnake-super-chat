@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -116,6 +117,7 @@ def test_github_source_sync_is_idempotent_and_enters_context(
         },
     ).json()
     project_id = project["id"]
+    project_uuid = UUID(project_id)
 
     source_response = client.post(
         f"/projects/{project_id}/sources",
@@ -160,7 +162,7 @@ def test_github_source_sync_is_idempotent_and_enters_context(
     with SessionFactory() as db:
         event_count = db.scalar(select(func.count(Event.id)))
         assert event_count == 4
-        source = db.scalar(select(ProjectSource).where(ProjectSource.project_id == project_id))
+        source = db.scalar(select(ProjectSource).where(ProjectSource.project_id == project_uuid))
         assert source is not None
         assert source.metadata_json["default_branch"] == "main"
         assert "last_synced_at" in source.metadata_json
