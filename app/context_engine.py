@@ -10,13 +10,13 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models import ContextItem, ContextRun, Decision, Project, SessionSummary, Task
+from app.models import ContextItem, ContextRun, Decision, Event, Project, SessionSummary, Task
 
 
 PROFILE_CONFIG = {
-    "minimal": {"max_tokens": 1800, "max_items": 10, "summary_limit": 1},
-    "standard": {"max_tokens": 5000, "max_items": 25, "summary_limit": 3},
-    "deep": {"max_tokens": 15000, "max_items": 60, "summary_limit": 6},
+    "minimal": {"max_tokens": 1800, "max_items": 10, "summary_limit": 1, "event_limit": 20},
+    "standard": {"max_tokens": 5000, "max_items": 25, "summary_limit": 3, "event_limit": 60},
+    "deep": {"max_tokens": 15000, "max_items": 60, "summary_limit": 6, "event_limit": 150},
 }
 
 TYPE_STRENGTH = {
@@ -25,12 +25,12 @@ TYPE_STRENGTH = {
     "task": 0.95,
     "fact": 0.90,
     "document_excerpt": 0.85,
-    "event": 0.80,
+    "event": 0.82,
     "note": 0.70,
 }
 
 SOURCE_STRENGTH = {
-    "github": 0.95,
+    "github": 0.98,
     "drive": 0.90,
     "calendar": 0.90,
     "summary": 0.90,
@@ -58,7 +58,6 @@ class Candidate:
 
 
 def estimate_tokens(text: str) -> int:
-    """Cheap conservative estimator used before a model-specific tokenizer exists."""
     if not text:
         return 0
     return max(1, math.ceil((len(text) / 4.0) * 1.15))
@@ -116,7 +115,6 @@ def score_candidate(candidate: Candidate, query: str, now: datetime) -> Candidat
     type_strength = TYPE_STRENGTH.get(candidate.kind, 0.65)
     source_strength = SOURCE_STRENGTH.get(candidate.source_type, 0.70)
     importance = min(1.0, max(0.0, candidate.importance))
-
     score = (
         relevance * 0.40
         + importance * 0.25
@@ -248,6 +246,52 @@ def _task_candidates(db: Session, project_id: UUID) -> list[Candidate]:
     return result
 
 
+def _event_importance(event: Event) -> float:
+    if event.event_type == "github.pull_request":
+        return 0.92
+    if event.event_type == "github.issue":
+        return 0.88
+    if event.event_type == "github.workflow_run":
+        conclusion = str((event.metadata_json or {}).get("conclusion") or "").lower()
+        return 0.95 if conclusion in {"failure", "cancelled", "timed_out"} else 0.78
+    if event.event_type == "github.commit":
+        return 0.76
+    return 0.70
+
+
+def _event_candidates(db: Session, project_id: UUID, limit: int) -> list[Candidate]:
+    stmt = (
+        select(Event)
+        .where(Event.project_id == project_id)
+        .order_by(Event.occurred_at.desc())
+        .limit(limit)
+    )
+    result: list[Candidate] = []
+    for event in db.scalars(stmt).all():
+        metadata = event.metadata_json or {}
+        repo = metadata.get("repository")
+        content_parts = [event.body or event.title]
+        if repo:
+            content_parts.append(f"Repositório: {repo}")
+        if event.event_type == "github.workflow_run":
+            if metadata.get("status"):
+                content_parts.append(f"Status: {metadata.get('status')}")
+            if metadata.get("conclusion"):
+                content_parts.append(f"Conclusão: {metadata.get('conclusion')}")
+        result.append(
+            Candidate(
+                kind="event",
+                title=event.title,
+                content="\n".join(content_parts),
+                source_type=event.source_type,
+                source_ref=event.url or f"event:{event.id}",
+                timestamp=event.occurred_at,
+                importance=_event_importance(event),
+            )
+        )
+    return result
+
+
 def _context_item_candidates(db: Session, project_id: UUID, now: datetime) -> list[Candidate]:
     stmt = (
         select(ContextItem)
@@ -285,11 +329,11 @@ def build_context_package(
 
     config = PROFILE_CONFIG[profile]
     now = datetime.now(timezone.utc)
-
     raw_candidates = [
         *_summary_candidates(db, project.id, config["summary_limit"]),
         *_decision_candidates(db, project.id),
         *_task_candidates(db, project.id),
+        *_event_candidates(db, project.id, config["event_limit"]),
         *_context_item_candidates(db, project.id, now),
     ]
     scored = [score_candidate(candidate, query, now) for candidate in raw_candidates]
@@ -312,8 +356,6 @@ def build_context_package(
             ],
         )
     )
-    # The user query is not counted twice: it already exists in the model request.
-    # The budget below is only for injected memory/context.
     base_tokens = estimate_tokens(project_text) + 120
     max_tokens = int(config["max_tokens"])
     remaining = max(0, max_tokens - base_tokens)
@@ -333,7 +375,6 @@ def build_context_package(
 
     candidate_tokens = base_tokens + sum(item.estimated_tokens for item in unique)
     selected_tokens = base_tokens + sum(item.estimated_tokens for item in selected)
-
     sources: list[dict[str, str | None]] = []
     seen_sources: set[tuple[str, str | None]] = set()
     for item in selected:

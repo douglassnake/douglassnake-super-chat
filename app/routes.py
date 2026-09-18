@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.context_engine import build_context_package
 from app.database import get_db
-from app.models import ContextItem, Decision, Project, SessionSummary, Task, utcnow
+from app.github_sync import GitHubAPIError, sync_project_github
+from app.models import ContextItem, Decision, Project, ProjectSource, SessionSummary, Task, utcnow
 from app.schemas import (
     ContextBuildRequest,
     ContextItemCreate,
@@ -17,9 +18,12 @@ from app.schemas import (
     ContextProfile,
     DecisionCreate,
     DecisionRead,
+    GitHubSyncResult,
     ProjectCreate,
     ProjectRead,
     ProjectSnapshot,
+    ProjectSourceCreate,
+    ProjectSourceRead,
     ProjectUpdate,
     SessionSummaryCreate,
     SessionSummaryRead,
@@ -77,6 +81,49 @@ def update_project(project_id: UUID, payload: ProjectUpdate, db: Session = Depen
     db.commit()
     db.refresh(project)
     return project
+
+
+@router.post(
+    "/projects/{project_id}/sources",
+    response_model=ProjectSourceRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_project_source(
+    project_id: UUID,
+    payload: ProjectSourceCreate,
+    db: Session = Depends(get_db),
+) -> ProjectSource:
+    project = get_project_or_404(db, project_id)
+    if payload.source_type == "github":
+        repository = (payload.external_id or "").strip().strip("/")
+        if not repository or "/" not in repository:
+            raise HTTPException(status_code=422, detail="GitHub external_id must be owner/repository")
+
+    existing_stmt = select(ProjectSource.id).where(
+        ProjectSource.project_id == project_id,
+        ProjectSource.source_type == payload.source_type,
+        ProjectSource.external_id == payload.external_id,
+    )
+    if db.scalar(existing_stmt) is not None:
+        raise HTTPException(status_code=409, detail="Project source already exists")
+
+    source = ProjectSource(project_id=project_id, **payload.model_dump())
+    project.last_activity_at = utcnow()
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+    return source
+
+
+@router.get("/projects/{project_id}/sources", response_model=list[ProjectSourceRead])
+def list_project_sources(project_id: UUID, db: Session = Depends(get_db)) -> list[ProjectSource]:
+    get_project_or_404(db, project_id)
+    stmt = (
+        select(ProjectSource)
+        .where(ProjectSource.project_id == project_id)
+        .order_by(ProjectSource.source_type.asc(), ProjectSource.label.asc())
+    )
+    return list(db.scalars(stmt).all())
 
 
 @router.post(
@@ -257,10 +304,26 @@ def continue_project(
     project_id: UUID,
     profile: ContextProfile = Query(default="standard"),
     query: str = Query(
-        default="continuar projeto status próxima ação decisões tarefas pendências bloqueios",
+        default="continuar projeto status próxima ação decisões tarefas pendências bloqueios commits PR issues actions",
         max_length=4000,
     ),
     db: Session = Depends(get_db),
 ) -> dict:
     project = get_project_or_404(db, project_id)
     return build_context_package(db, project, query, profile)
+
+
+@router.post("/projects/{project_id}/github/sync", response_model=GitHubSyncResult)
+def sync_github(project_id: UUID, db: Session = Depends(get_db)) -> dict:
+    project = get_project_or_404(db, project_id)
+    source_stmt = select(ProjectSource.id).where(
+        ProjectSource.project_id == project_id,
+        ProjectSource.source_type == "github",
+        ProjectSource.is_active.is_(True),
+    )
+    if db.scalar(source_stmt) is None:
+        raise HTTPException(status_code=400, detail="Project has no active GitHub source")
+    try:
+        return sync_project_github(db, project)
+    except GitHubAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

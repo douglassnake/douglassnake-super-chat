@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     app_name: str = "Super Chat API"
     environment: str = "development"
     database_url: str = "postgresql+psycopg://superchat:superchat@localhost:5432/superchat"
+    github_token: str | None = None
+    github_api_url: str = "https://api.github.com"
 
     model_config = SettingsConfigDict(
         env_file=".env",
