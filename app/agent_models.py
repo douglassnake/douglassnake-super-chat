@@ -18,6 +18,7 @@ class AgentTaskPack(Base):
         index=True,
     )
     status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    project_snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict)
     objective: Mapped[str] = mapped_column(Text)
     profile: Mapped[str] = mapped_column(String(30))
     query_text: Mapped[str] = mapped_column(Text)
