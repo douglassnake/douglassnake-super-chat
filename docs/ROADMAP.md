@@ -106,31 +106,61 @@ Entregas:
 - testes automatizados;
 - documentação `docs/AGENT_TASK_PACKS.md`.
 
-Regra de autorização: `approved` significa **pronto para handoff**, não autorização automática para merge, deploy, publicação ou escrita externa.
+Regra de autorização: `approved` significa **pronto para handoff**. O pack continua com `authorized_for_execution = false`; a liberação operacional ocorre somente no handoff do M8.1.
 
 ### M8.1 — handoff assistido e auditável
-Status: **planejado**.
+Status: **concluído na branch `codex/m8-1-agent-handoffs`**.
 
-Objetivo: entregar um `AgentTaskPack` aprovado a um executor sem ampliar silenciosamente permissões.
+Entregas:
+- estrutura persistente `AgentHandoff`;
+- vínculo obrigatório a Task Pack aprovado;
+- executor e alvo declarados;
+- allowlist explícita de ações;
+- nenhuma permissão operacional por padrão;
+- fingerprint do pack congelado no handoff;
+- snapshot compacto de objetivo, critérios, guardrails, fontes e budget;
+- estados `prepared`, `released`, `completed`, `failed` e `cancelled`;
+- release explícito antes de considerar execução liberada;
+- transições protegidas e idempotentes quando repetidas no mesmo estado;
+- resultado/falha estruturados com redaction;
+- limite para resultado serializado;
+- exportação Markdown com contexto do Task Pack e validação de fingerprint;
+- migration Alembic `0004_agent_handoffs`;
+- testes automatizados;
+- documentação `docs/AGENT_HANDOFFS.md`.
 
-Possíveis entregas:
-- registro de handoff com executor/alvo;
-- trilha de auditoria do pack entregue;
-- retorno estruturado de execução/status;
-- associação entre pack, branch, commit e PR quando esses artefatos existirem;
-- diferenças entre plano aprovado e resultado executado;
-- revisão humana antes de qualquer ação de escrita externa;
-- nenhum merge/deploy automático por padrão.
+Allowlist do marco:
+- `read_context`;
+- `read_repository`;
+- `modify_worktree`;
+- `run_tests`;
+- `create_branch`;
+- `create_commit`;
+- `create_pull_request`.
+
+Nunca implicitamente autorizados:
+- merge;
+- deploy;
+- publicação;
+- escrita em Drive/Calendar;
+- escrita em outros serviços externos.
+
+O M8.1 ainda não chama um executor real; ele registra e exporta o envelope auditável.
 
 ### M8.2 — acompanhamento de execução
-Status: **futuro**.
+Status: **próximo marco**.
 
-Somente após M8.1 e métricas operacionais:
-- acompanhamento de PRs e CI;
-- atualização de progresso;
-- geração de follow-ups;
-- encerramento de tarefa mediante evidência;
-- políticas explícitas por tipo de ação.
+Objetivo: acompanhar uma execução real iniciada por fluxo autorizado sem transformar o Segundo Cérebro em executor autônomo irrestrito.
+
+Possíveis entregas:
+- associação do handoff a branch/commit/PR existentes;
+- acompanhamento de CI e estado do PR;
+- heartbeat/progresso estruturado;
+- comparação entre critérios aprovados e resultado observado;
+- registro de evidências de conclusão;
+- follow-ups sugeridos;
+- nenhuma promoção automática para merge/deploy/publicação;
+- política separada para qualquer efeito externo adicional.
 
 ## Regra de evolução
 
@@ -140,4 +170,5 @@ Não adicionar complexidade de IA ou autonomia antes de existir:
 3. rastreabilidade;
 4. teste de recuperação;
 5. métrica de contexto;
-6. autorização humana explícita para ações com efeito externo.
+6. autorização humana explícita para ações com efeito externo;
+7. evidência verificável antes de marcar execução como concluída.
