@@ -28,8 +28,7 @@ def run_benchmark_dataset(dataset: dict) -> dict:
     try:
         with Session(engine, expire_on_commit=False) as db:
             for index, case in enumerate(cases, start=1):
-                result = _run_case(db, case, index)
-                results.append(result)
+                results.append(_run_case(db, case, index))
     finally:
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
@@ -70,12 +69,15 @@ def _run_case(db: Session, case: dict, index: int) -> dict:
     db.flush()
 
     for item in case.get("items") or []:
+        base_content = str(item.get("content") or "")
+        repeat = max(1, min(int(item.get("repeat") or 1), 5000))
+        content = " ".join([base_content] * repeat)
         db.add(
             ContextItem(
                 project_id=project.id,
                 kind=str(item.get("kind") or "fact"),
                 title=item.get("title"),
-                content=str(item.get("content") or ""),
+                content=content,
                 importance=float(item.get("importance", 0.5)),
                 source_type=str(item.get("source_type") or "benchmark"),
                 source_ref=str(item.get("source_ref") or f"benchmark:{uuid4()}"),
