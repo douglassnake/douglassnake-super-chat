@@ -17,7 +17,7 @@ from app.agent_handoff import (
     render_handoff_markdown,
     sanitize_value,
 )
-from app.agent_models import AgentHandoff, AgentTaskPack
+from app.agent_models import AgentExecution, AgentHandoff, AgentTaskPack
 from app.agent_task_pack import redact_secrets
 from app.database import get_db
 from app.models import utcnow
@@ -55,6 +55,20 @@ def get_handoff(db: Session, handoff_id: UUID) -> AgentHandoff:
     if handoff is None:
         raise HTTPException(status_code=404, detail="Agent handoff not found")
     return handoff
+
+
+def reject_if_tracked_execution(db: Session, handoff_id: UUID, action: str) -> None:
+    execution = db.scalar(select(AgentExecution).where(AgentExecution.handoff_id == handoff_id))
+    if execution is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "This handoff has tracked execution; use the execution endpoint so evidence gates cannot be bypassed",
+                "execution_id": str(execution.id),
+                "execution_status": execution.status,
+                "requested_action": action,
+            },
+        )
 
 
 def sanitize_result(payload: dict) -> dict:
@@ -146,6 +160,7 @@ def complete_agent_handoff(
     db: Session = Depends(get_db),
 ) -> dict:
     handoff = get_handoff(db, handoff_id)
+    reject_if_tracked_execution(db, handoff.id, "complete")
     if handoff.status == "completed":
         return handoff_payload(handoff)
     if handoff.status != "released":
@@ -169,6 +184,7 @@ def fail_agent_handoff(
     db: Session = Depends(get_db),
 ) -> dict:
     handoff = get_handoff(db, handoff_id)
+    reject_if_tracked_execution(db, handoff.id, "fail")
     if handoff.status == "failed":
         return handoff_payload(handoff)
     if handoff.status != "released":
@@ -188,6 +204,7 @@ def fail_agent_handoff(
 @router.post("/agent-handoffs/{handoff_id}/cancel")
 def cancel_agent_handoff(handoff_id: UUID, db: Session = Depends(get_db)) -> dict:
     handoff = get_handoff(db, handoff_id)
+    reject_if_tracked_execution(db, handoff.id, "cancel")
     if handoff.status == "cancelled":
         return handoff_payload(handoff)
     if handoff.status not in {"prepared", "released"}:
