@@ -19,13 +19,24 @@ class Settings(BaseSettings):
     google_drive_api_url: str = "https://www.googleapis.com/drive/v3"
     google_calendar_api_url: str = "https://www.googleapis.com/calendar/v3"
 
-    # M8.5: execução local isolada. Permanece desligada por padrão.
+    # M8.5/M8.6: execução isolada. Permanece desligada por padrão.
     executor_isolated_enabled: bool = False
     executor_worktree_root: str | None = None
     executor_timeout_seconds: float = 60.0
     executor_max_timeout_seconds: float = 300.0
     executor_output_max_bytes: int = 65_536
     executor_env_allowlist: str = "SYSTEMROOT,TEMP,TMP,TMPDIR"
+
+    # O worker roda em processo separado da API. `subprocess-sandbox` funciona
+    # sem runtime externo; `container` exige runtime/imagem administrados pelo servidor.
+    executor_worker_backend: str = "subprocess-sandbox"
+    executor_worker_cpu_seconds: int = 120
+    executor_worker_memory_mb: int = 1024
+    executor_worker_pids: int = 128
+    executor_worker_nofile: int = 256
+    executor_worker_file_size_mb: int = 64
+    executor_container_runtime: str = "docker"
+    executor_container_image: str = "python:3.13-slim"
 
     model_config = SettingsConfigDict(
         env_file=".env",
