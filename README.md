@@ -39,7 +39,9 @@ Controlled Executor
 ExecutorRequest prepared
         ↓ release explícito
 released
-        ↓ adapter explicitamente configurado
+        ↓ adapter
+manual (inerte) | isolated-local (M8.5)
+        ↓
 running → completed | failed
 ```
 
@@ -54,7 +56,7 @@ Execution completed      = critérios de aceite possuem evidência explícita pa
 
 Nenhuma dessas etapas autoriza implicitamente merge, deploy, publicação ou escrita em serviços externos.
 
-## Marcos M1–M8.4
+## Marcos M1–M8.5
 
 - **M1 — Memória operacional:** projetos, decisões, tarefas, resumos, PostgreSQL, Alembic e Docker.
 - **M2 — Context Engine:** ranking, deduplicação, compactação, orçamento de tokens e `continue`.
@@ -67,17 +69,14 @@ Nenhuma dessas etapas autoriza implicitamente merge, deploy, publicação ou esc
 - **M8.1 — Agent Handoffs:** executor/alvo, allowlist de ações, release explícito e trilha de auditoria.
 - **M8.2 — Agent Executions:** progresso, referências observadas, eventos append-only e gate de evidências.
 - **M8.3 — GitHub Verification:** commit/PR/check-runs verificados por leitura e evidência de CI somente por regra explícita.
-- **M8.4 — Controlled Executor:** request de ação, release específico, política global, anti-replay e adapter injetável; o adapter padrão continua inerte.
+- **M8.4 — Controlled Executor:** request de ação, release específico, política global, anti-replay e adapter injetável.
+- **M8.5 — Isolated Local Adapter:** execução real limitada de `run_tests` e leitura de metadados dentro de worktree restrito.
 
-## Agent Task Packs
+## Agent Task Packs e Handoffs
 
-Um `AgentTaskPack` aprovado está pronto para originar handoff, mas não autoriza execução. Critérios de aceite são explícitos e obrigatórios; o sistema não os inventa.
+Um `AgentTaskPack` aprovado está pronto para originar handoff, mas não autoriza execução. Um handoff só libera as ações listadas explicitamente.
 
-Veja `docs/AGENT_TASK_PACKS.md`.
-
-## Agent Handoffs
-
-Um handoff só nasce de pack `approved`. Ações reconhecidas:
+Ações reconhecidas pela política atual:
 
 ```text
 read_context
@@ -91,27 +90,21 @@ create_pull_request
 
 Merge, deploy, publicação e escrita em serviços externos nunca são implicitamente autorizados.
 
-Veja `docs/AGENT_HANDOFFS.md`.
+Veja `docs/AGENT_TASK_PACKS.md` e `docs/AGENT_HANDOFFS.md`.
 
-## Agent Executions
+## Agent Executions e verificação
 
 Uma execução rastreada só nasce de handoff `released`. Progresso, referências técnicas, verificações e evidências são registrados em `AgentExecutionEvent` append-only.
 
 A conclusão é bloqueada enquanto qualquer critério estiver `pending` ou `failed`.
 
-Veja `docs/AGENT_EXECUTIONS.md`.
+O M8.3 verifica commit, PR e check-runs em modo somente leitura. `verified` confirma identidade/proveniência; não significa automaticamente que um critério passou.
 
-## GitHub Verification
-
-O M8.3 verifica commit, PR e check-runs em modo somente leitura. O repositório é derivado de uma fonte GitHub ativa do projeto.
-
-`verified` confirma identidade/proveniência; não significa que um critério passou. A regra `checks_green` só gera evidência `passed` quando o solicitante informa explicitamente o `criterion_index`.
-
-Veja `docs/GITHUB_VERIFICATION.md`.
+Veja `docs/AGENT_EXECUTIONS.md` e `docs/GITHUB_VERIFICATION.md`.
 
 ## Controlled Executor
 
-O M8.4 adiciona `ExecutorRequest` como unidade explícita de autorização operacional:
+O M8.4 introduz `ExecutorRequest`:
 
 ```text
 prepared
@@ -122,19 +115,49 @@ prepared
                                      └── failed
 ```
 
-Para uma request ser criada, a ação precisa:
+A ação precisa pertencer à política global, estar na allowlist do handoff e apontar para uma execução `running`.
 
-1. pertencer à política global do executor;
-2. estar na allowlist do handoff;
-3. estar vinculada a uma execução `running` e handoff `released`.
+O executor rejeita payloads com shell/comando arbitrário, incluindo chaves como `command`, `cmd`, `shell`, `script`, `argv` e `executable`.
 
-O executor **não oferece shell arbitrário**. Payloads com chaves como `command`, `cmd`, `shell`, `script`, `argv` ou `executable` são rejeitados, inclusive de forma aninhada.
-
-O adapter padrão `manual` tem `available = false`: ele registra autorização e auditoria, mas não executa processos externos. Testes usam adapters fake injetados.
-
-Um request concluído não produz automaticamente `criterion_evidence` e não conclui o `AgentExecution`.
+O adapter `manual` permanece inerte.
 
 Veja `docs/CONTROLLED_EXECUTOR.md`.
+
+## Isolated Local Adapter — M8.5
+
+O adapter `isolated-local` é **desabilitado por padrão** e só fica disponível quando um root privado de worktrees é configurado.
+
+Capacidades reais atuais:
+
+```text
+read_repository   → apenas scope=metadata
+run_tests         → apenas preset server-side pytest
+```
+
+`run_tests` é montado internamente como:
+
+```text
+<python-do-servidor> -m pytest -q <target-validado>
+```
+
+O cliente não escolhe binário, argv ou flags arbitrárias.
+
+Proteções do M8.5:
+
+- caminhos relativos e resolução canônica;
+- bloqueio de `..` e symlink escape;
+- `cwd` sempre dentro do root permitido;
+- `shell=False`;
+- `stdin=DEVNULL`;
+- ambiente mínimo com allowlist de variáveis não sensíveis;
+- timeout com encerramento de processo/grupo quando suportado;
+- limite do volume persistido de stdout/stderr;
+- redaction antes da persistência;
+- ações sem contrato retornam `unsupported` sem efeito externo.
+
+As ações `modify_worktree`, `create_branch`, `create_commit` e `create_pull_request` **ainda não possuem implementação real** nesse adapter.
+
+Veja `docs/ISOLATED_EXECUTOR.md`.
 
 ## Recuperação e economia de tokens
 
@@ -159,14 +182,14 @@ A busca semântica/pgvector do M7.1 continua condicionada a benchmark privado co
 
 O repositório é público. Memória real, `.env`, credenciais, conversas, dumps do banco e documentos privados não devem ser versionados.
 
-Payloads estruturados também passam por redaction de chaves sensíveis como `token`, `secret`, `password`, `access_token`, `refresh_token`, `api_key` e `authorization`.
+Payloads estruturados e saídas do executor passam por redaction antes da persistência.
 
 ## Executar
 
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-4-controlled-executor
+git checkout codex/m8-5-isolated-adapter
 cp .env.example .env
 docker compose up --build
 ```
@@ -175,48 +198,10 @@ Interface: `http://localhost:8000/app/`
 
 OpenAPI: `http://localhost:8000/docs`
 
-## Endpoints centrais
-
-```text
-GET    /dashboard
-GET    /projects/{project_id}/overview
-GET    /projects/{project_id}/snapshot
-GET    /projects/{project_id}/continue
-POST   /context/build
-POST   /evaluation/context
-
-POST   /projects/{project_id}/github/sync
-POST   /projects/{project_id}/google/sync
-
-POST   /projects/{project_id}/session-deltas
-GET    /session-deltas/{delta_id}/preview
-POST   /session-deltas/{delta_id}/apply
-POST   /session-deltas/{delta_id}/discard
-
-POST   /agent-task-packs
-POST   /agent-task-packs/{pack_id}/approve
-POST   /agent-task-packs/{pack_id}/handoffs
-POST   /agent-handoffs/{handoff_id}/release
-POST   /agent-handoffs/{handoff_id}/execution
-
-GET    /agent-executions/{execution_id}
-GET    /agent-executions/{execution_id}/events
-POST   /agent-executions/{execution_id}/progress
-POST   /agent-executions/{execution_id}/technical-refs
-POST   /agent-executions/{execution_id}/evidence
-POST   /agent-executions/{execution_id}/verify-github
-POST   /agent-executions/{execution_id}/complete
-POST   /agent-executions/{execution_id}/fail
-POST   /agent-executions/{execution_id}/cancel
-
-POST   /agent-executions/{execution_id}/executor-requests
-GET    /agent-executions/{execution_id}/executor-requests
-GET    /executor-requests/{request_id}
-POST   /executor-requests/{request_id}/release
-POST   /executor-requests/{request_id}/execute
-POST   /executor-requests/{request_id}/cancel
-```
+O adapter `isolated-local` continua desligado até configuração explícita de `EXECUTOR_ISOLATED_ENABLED=true` e `EXECUTOR_WORKTREE_ROOT`.
 
 ## Próxima etapa
 
-Um **M8.5 — adapter real isolado** pode ser considerado apenas com política por ação, worker isolado, diretório de trabalho restrito, timeout, limites de recurso e auditoria de artefatos. Merge, deploy e publicação permanecem fora da autorização padrão.
+O passo seguinte deve endurecer a execução antes de adicionar novas escritas: isolamento por container/cgroup ou worker dedicado, limites fortes de CPU/memória/processos e política de artefatos. Só depois faz sentido considerar contratos reais para modificar worktree, criar branch, commit ou PR.
+
+Merge, deploy e publicação continuam fora da política padrão.
