@@ -42,7 +42,6 @@ class ProcessWorkerClient:
                 input=dumps_job(job),
                 cwd=self.package_root,
                 env=self._worker_env(),
-                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
