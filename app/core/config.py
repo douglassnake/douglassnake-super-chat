@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     google_drive_api_url: str = "https://www.googleapis.com/drive/v3"
     google_calendar_api_url: str = "https://www.googleapis.com/calendar/v3"
 
-    # Execução isolada. Permanece desligada por padrão.
     executor_isolated_enabled: bool = False
     executor_worktree_root: str | None = None
     executor_timeout_seconds: float = 60.0
@@ -27,7 +26,6 @@ class Settings(BaseSettings):
     executor_output_max_bytes: int = 65_536
     executor_env_allowlist: str = "SYSTEMROOT,TEMP,TMP,TMPDIR"
 
-    # Worker separado da API.
     executor_worker_backend: str = "subprocess-sandbox"
     executor_worker_cpu_seconds: int = 120
     executor_worker_memory_mb: int = 1024
@@ -37,24 +35,22 @@ class Settings(BaseSettings):
     executor_container_runtime: str = "docker"
     executor_container_image: str = "python:3.13-slim"
 
-    # M8.7: proveniência/reconciliação. O cliente não escolhe estes limites.
     executor_worker_lease_seconds: int = 120
     executor_worker_max_attempts: int = 3
 
-    # M8.8: alteração efêmera. Limites exclusivamente server-side.
     executor_modify_max_files: int = 20
     executor_modify_max_operations: int = 40
     executor_modify_max_total_write_bytes: int = 65_536
     executor_modify_max_patch_bytes: int = 65_536
 
-    # M8.10: worktrees Git persistentes de staging. Deve ser um diretório privado,
-    # separado do worktree fonte e administrado pelo servidor.
     executor_git_staging_root: str | None = None
-
-    # M8.11: identidade exclusiva para commits locais criados pelo executor.
-    # Nunca é aceita do payload do agente/cliente.
     executor_git_author_name: str = "Super Chat Executor"
     executor_git_author_email: str = "superchat-executor@localhost"
+
+    # M8.12: remote inicial sem credenciais/rede externa. Deve apontar para
+    # um repositório bare local absoluto controlado pelo servidor.
+    executor_git_publish_remote: str | None = None
+    executor_git_publish_remote_id: str = "controlled-bare"
 
     model_config = SettingsConfigDict(
         env_file=".env",
