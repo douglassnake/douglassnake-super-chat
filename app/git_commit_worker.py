@@ -23,6 +23,9 @@ from app.worker_runtime import (
 from app.worktree_diff import _relative_path
 
 
+_MAX_TRACKED_SCAN = 20_000
+
+
 def _valid_sha(raw: object, *, field: str) -> str:
     value = str(raw or "").strip().lower()
     if len(value) not in {40, 64} or any(ch not in "0123456789abcdef" for ch in value):
@@ -185,35 +188,101 @@ def _build_base_snapshot(
         target.write_bytes(data)
 
 
-def _working_paths(job: WorkerJob, staging: Path) -> tuple[set[str], bool]:
-    cached = _git(
-        job,
-        staging,
-        "diff",
-        "--cached",
-        "--no-ext-diff",
-        "--no-textconv",
-        "--name-only",
-        "-z",
-        "HEAD",
-        "--",
-    )
-    if not cached.ok:
-        raise ValueError("Unable to inspect staging index")
-    if _split_nul_paths(cached.result.get("stdout")):
-        return set(), True
+def _parse_index_entries(raw: str) -> list[tuple[str, str, str]]:
+    entries: list[tuple[str, str, str]] = []
+    for record in _split_nul_paths(raw):
+        if "\t" not in record:
+            raise ValueError("Unable to parse Git index entry")
+        metadata, path = record.split("\t", 1)
+        fields = metadata.split()
+        if len(fields) != 3:
+            raise ValueError("Unable to parse Git index metadata")
+        mode, blob_sha, stage_number = fields
+        if stage_number != "0":
+            raise ValueError("Controlled commit does not support an unmerged Git index")
+        _relative_path(path)
+        entries.append((mode, blob_sha.lower(), path))
+    return entries
 
-    tracked = _git(
-        job,
-        staging,
-        "diff",
-        "--no-ext-diff",
-        "--no-textconv",
-        "--name-only",
-        "-z",
-        "HEAD",
-        "--",
+
+def _assert_approved_paths_have_no_symlink_components(
+    staging: Path,
+    changed_files: list[dict[str, Any]],
+) -> None:
+    root = staging.resolve(strict=True)
+    for item in changed_files:
+        relative = PurePosixPath(item["path"])
+        current = staging
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                raise ValueError(
+                    f"Approved commit path traverses a symlink: {relative.as_posix()}"
+                )
+            if not current.exists():
+                break
+            resolved = current.resolve(strict=True)
+            if resolved != root and root not in resolved.parents:
+                raise ValueError(
+                    f"Approved commit path escapes staging root: {relative.as_posix()}"
+                )
+
+
+def _file_mode(path: Path) -> str:
+    info = path.lstat()
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise ValueError(f"Controlled commit target must be a regular file: {path.name}")
+    return "100755" if info.st_mode & 0o111 else "100644"
+
+
+def _working_paths(job: WorkerJob, staging: Path) -> tuple[set[str], bool]:
+    """Enumerate worktree drift without invoking Git content conversion filters."""
+    index_tree = _git(job, staging, "write-tree")
+    head_tree = _git(job, staging, "rev-parse", "--verify", "HEAD^{tree}")
+    if not index_tree.ok or not head_tree.ok:
+        raise ValueError("Unable to verify controlled staging index tree")
+    pre_staged = (
+        str(index_tree.result.get("stdout") or "").strip().lower()
+        != str(head_tree.result.get("stdout") or "").strip().lower()
     )
+
+    listed = _git(job, staging, "ls-files", "-s", "-z")
+    if not listed.ok:
+        raise ValueError("Unable to enumerate tracked Git index entries")
+    entries = _parse_index_entries(str(listed.result.get("stdout") or ""))
+    if len(entries) > _MAX_TRACKED_SCAN:
+        raise ValueError("Controlled commit refuses to scan more than 20000 tracked files")
+
+    changed: set[str] = set()
+    for mode, index_blob, path_text in entries:
+        relative = PurePosixPath(path_text)
+        target = staging.joinpath(*relative.parts)
+        if mode in {"100644", "100755"}:
+            if target.is_symlink() or not target.is_file():
+                changed.add(path_text)
+                continue
+            if _file_mode(target) != mode:
+                changed.add(path_text)
+                continue
+            hashed = _git(job, staging, "hash-object", "--no-filters", "--", path_text)
+            if not hashed.ok:
+                raise ValueError(f"Unable to hash tracked worktree file without filters: {path_text}")
+            observed = str(hashed.result.get("stdout") or "").strip().lower()
+            if observed != index_blob:
+                changed.add(path_text)
+        elif mode == "120000":
+            if not target.is_symlink():
+                changed.add(path_text)
+                continue
+            expected = _git_blob_bytes(job, staging, index_blob)
+            observed = os.fsencode(os.readlink(target))
+            if observed != expected:
+                changed.add(path_text)
+        elif mode == "160000":
+            raise ValueError("Controlled commit does not support gitlink/submodule index entries")
+        else:
+            raise ValueError(f"Unsupported Git index mode during controlled scan: {mode}")
+
     untracked = _git(job, staging, "ls-files", "--others", "--exclude-standard", "-z")
     ignored = _git(
         job,
@@ -224,12 +293,11 @@ def _working_paths(job: WorkerJob, staging: Path) -> tuple[set[str], bool]:
         "--exclude-standard",
         "-z",
     )
-    if not tracked.ok or not untracked.ok or not ignored.ok:
-        raise ValueError("Unable to enumerate staging changes")
-    paths = set(_split_nul_paths(tracked.result.get("stdout")))
-    paths.update(_split_nul_paths(untracked.result.get("stdout")))
-    paths.update(_split_nul_paths(ignored.result.get("stdout")))
-    return paths, False
+    if not untracked.ok or not ignored.ok:
+        raise ValueError("Unable to enumerate untracked/ignored staging files")
+    changed.update(_split_nul_paths(untracked.result.get("stdout")))
+    changed.update(_split_nul_paths(ignored.result.get("stdout")))
+    return changed, pre_staged
 
 
 def _base_mode(job: WorkerJob, repository: Path, base_sha: str, path: str) -> str | None:
@@ -243,13 +311,6 @@ def _base_mode(job: WorkerJob, repository: Path, base_sha: str, path: str) -> st
     if mode not in {"100644", "100755"}:
         raise ValueError(f"Unsupported Git file mode for controlled commit: {mode} ({path})")
     return mode
-
-
-def _file_mode(path: Path) -> str:
-    info = path.lstat()
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
-        raise ValueError(f"Controlled commit target must be a regular file: {path.name}")
-    return "100755" if info.st_mode & 0o111 else "100644"
 
 
 def _rollback_ref(
@@ -295,6 +356,7 @@ def execute_create_commit(job: WorkerJob) -> WorkerResult:
         raise ValueError("Controlled staging worktree escapes the configured staging root")
     if not (staging / ".git").exists():
         raise ValueError("Controlled staging path is not a Git linked worktree")
+    _assert_approved_paths_have_no_symlink_components(staging, changed_files)
 
     branch_ref = _git(job, source, "rev-parse", "--verify", f"refs/heads/{branch_name}")
     staging_head = _git(job, staging, "rev-parse", "--verify", "HEAD")
@@ -360,9 +422,7 @@ def execute_create_commit(job: WorkerJob) -> WorkerResult:
 
         index_file = temp_root / "index"
         index_env = {"GIT_INDEX_FILE": str(index_file)}
-        read_tree = _git_with_env(
-            job, source, "read-tree", base_sha, extra_env=index_env
-        )
+        read_tree = _git_with_env(job, source, "read-tree", base_sha, extra_env=index_env)
         if not read_tree.ok:
             return WorkerResult(False, read_tree.result, "Unable to initialize controlled temporary index")
 
@@ -435,6 +495,8 @@ def execute_create_commit(job: WorkerJob) -> WorkerResult:
             "--no-commit-id",
             "--name-only",
             "--no-renames",
+            "--no-ext-diff",
+            "--no-textconv",
             "-r",
             "-z",
             base_sha,
