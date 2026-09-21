@@ -163,9 +163,12 @@ def test_publish_branch_requires_own_release_and_publishes_exact_commit(
     assert result["branch_name"] == branch
     assert result["commit_sha"] == stage["commit_sha"]
     assert result["remote_sha"] == stage["commit_sha"]
-    assert result["push_performed"] is True
+    assert result["remote_publication_performed"] is True
+    assert result["push_performed"] is False
+    assert result["receive_pack_used"] is False
     assert result["pull_request_created"] is False
     assert result["force_used"] is False
+    assert result["transport"] == "local_bundle_fetch_update_ref_cas"
     assert result["network_policy"] == "local_filesystem_remote_only"
     assert _remote_sha(stage, branch) == stage["commit_sha"]
     assert str(stage["remote"]) not in str(body)
@@ -274,7 +277,7 @@ def test_publish_branch_rejects_local_branch_drift_before_remote_effect(
     assert _remote_sha(stage, branch) is None
 
 
-def test_publish_branch_does_not_execute_pre_push_or_receive_hooks(
+def test_publish_branch_does_not_execute_push_receive_or_reference_hooks(
     apply_client: TestClient,
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -291,6 +294,8 @@ def test_publish_branch_does_not_execute_pre_push_or_receive_hooks(
 
     pre_push_marker = tmp_path / "pre-push-ran.txt"
     receive_marker = tmp_path / "pre-receive-ran.txt"
+    reference_marker = tmp_path / "reference-transaction-ran.txt"
+
     pre_push = stage["repo"] / ".git" / "hooks" / "pre-push"
     pre_push.write_text(
         f"#!/bin/sh\necho pre-push > '{pre_push_marker}'\nexit 1\n",
@@ -305,6 +310,13 @@ def test_publish_branch_does_not_execute_pre_push_or_receive_hooks(
     )
     pre_receive.chmod(pre_receive.stat().st_mode | stat.S_IXUSR)
 
+    reference_hook = stage["remote"] / "hooks" / "reference-transaction"
+    reference_hook.write_text(
+        f"#!/bin/sh\necho reference > '{reference_marker}'\nexit 1\n",
+        encoding="utf-8",
+    )
+    reference_hook.chmod(reference_hook.stat().st_mode | stat.S_IXUSR)
+
     created = _publish_request(client, stage)
     assert created.status_code == 201
     request_id = created.json()["id"]
@@ -312,6 +324,10 @@ def test_publish_branch_does_not_execute_pre_push_or_receive_hooks(
     executed = client.post(f"/executor-requests/{request_id}/execute")
     assert executed.status_code == 200
     assert executed.json()["status"] == "completed"
+    result = executed.json()["result"]
+    assert result["push_performed"] is False
+    assert result["receive_pack_used"] is False
     assert _remote_sha(stage, branch) == stage["commit_sha"]
     assert not pre_push_marker.exists()
     assert not receive_marker.exists()
+    assert not reference_marker.exists()
