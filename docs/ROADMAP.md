@@ -72,24 +72,36 @@ Status: **concluído na branch `codex/m8-6-worker-hardening`**.
 
 Entregas:
 - `WorkerJob` JSON versionado (`schema_version=1`);
-- `ProcessWorkerClient` separando a execução técnica do processo da API;
-- `worker_entry` com fronteira de erro estruturada;
-- backend `subprocess-sandbox` compatível com CI;
-- backend `container` opcional;
-- cópia temporária do worktree por request para `run_tests`;
-- validação de symlinks antes da cópia;
-- limpeza automática do workspace temporário;
-- ambiente mínimo e sem secrets do processo pai;
-- timeout interno + deadline externo do worker;
-- limites POSIX quando suportados: CPU, memória, PIDs, NOFILE e FSIZE;
+- processo de worker separado da API;
+- backend `subprocess-sandbox` e contrato `container` opcional;
+- cópia temporária do worktree para testes;
+- limites de CPU, memória, PIDs, NOFILE e FSIZE quando suportados;
+- ambiente mínimo sem secrets;
+- timeout interno + deadline externo;
 - stdout/stderr limitados e redigidos;
-- resultado com backend, motivo de terminação, limites efetivos e não suportados;
-- backend subprocess registra explicitamente ausência de isolamento de rede;
-- contrato de container com `--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges`, limites de PIDs/memória/CPU e tmpfs restrito;
-- Docker socket nunca é montado;
-- ações de escrita continuam `unsupported`;
-- testes de processo separado, workspace efêmero, não herança de secrets, symlink escape e política de container;
-- documentação `docs/WORKER_HARDENING.md`.
+- `--network none`, filesystem read-only, cap-drop e no-new-privileges no contrato container;
+- nenhum Docker socket;
+- ações de escrita permanecem `unsupported`.
+
+### M8.7 — proveniência e reconciliação do worker
+Status: **concluído na branch `codex/m8-7-worker-provenance` após CI final verde**.
+
+Entregas:
+- migration `0007_worker_attempts`;
+- `WorkerAttempt` persistente com tentativas numeradas;
+- identidade de worker, PID e fingerprint de host;
+- `job_digest` e `result_digest` SHA-256;
+- validação dos digests pela API antes de aceitar resultado;
+- lease com token aleatório e somente hash persistido;
+- heartbeat autenticado;
+- reconciliação de leases `expired/orphaned`;
+- request em execução fica `failed` quando sua tentativa órfã é reconciliada;
+- retry explícito separado de replay;
+- retry cria nova tentativa e preserva tentativa terminal anterior;
+- máximo de tentativas definido server-side;
+- eventos append-only de lease, início, resultado, órfão e retry;
+- documentação `docs/WORKER_PROVENANCE.md`;
+- imagem container deve ser pinada por digest antes de qualquer capacidade futura de escrita.
 
 Continuam sem implementação real:
 - `modify_worktree`;
@@ -97,30 +109,29 @@ Continuam sem implementação real:
 - `create_commit`;
 - `create_pull_request`.
 
-Continuam proibidos por padrão:
+Continuam proibidos:
 - merge;
 - deploy;
 - publicação;
 - escrita em Drive/Calendar;
-- escrita genérica em serviços externos;
+- escrita externa genérica;
 - shell/comando/binário/argv arbitrário.
 
-### M8.7 — proveniência e reconciliação do worker
+### M8.8 — preparação para escrita Git controlada
 Status: **futuro/condicional**.
 
-Antes de escrita real em código/Git, adicionar:
-- imagem de worker pinada por digest;
-- identidade/proveniência do executor;
-- assinatura ou attestation do resultado;
-- fila persistente/broker ou protocolo equivalente;
-- lease/heartbeat de jobs;
-- reconciliação de jobs órfãos;
-- política de egress testável;
-- quota de disco/IO quando suportada;
-- inventário e retenção de artefatos;
-- política de limpeza/retry idempotente.
-
-Somente depois considerar contratos reais separados para `modify_worktree`, `create_branch`, `create_commit` e `create_pull_request`.
+Antes de habilitar qualquer escrita real:
+- imagem/container pinado por digest e verificado;
+- identidade Git exclusiva do executor;
+- worktree efêmero dedicado por tentativa;
+- patch/diff como artefato antes de persistir mudanças;
+- política de path allowlist/denylist por projeto;
+- limite de quantidade/tamanho de arquivos modificados;
+- proibição explícita de secrets, `.env`, chaves e arquivos fora do projeto;
+- `modify_worktree` separado de `create_branch` e `create_commit`;
+- aprovação humana entre diff gerado e persistência Git;
+- `create_pull_request` em etapa separada;
+- merge, deploy e publish continuam fora.
 
 ## Regra de evolução
 
@@ -134,4 +145,5 @@ Não ampliar autonomia antes de existir:
 7. política específica por efeito;
 8. isolamento e limites de recurso;
 9. worker separado e auditável;
-10. proveniência/reconciliação antes de escrita Git real.
+10. proveniência/reconciliação;
+11. diff revisável antes de escrita Git real.
