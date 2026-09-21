@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.executor_routes as executor_routes_module
+import app.worker_attempts as worker_attempts_module
 from app.database import Base, get_db
 from app.isolated_executor import IsolatedLocalExecutorAdapter
 from app.main import app
@@ -148,6 +150,38 @@ def test_explicit_lease_returns_token_once_and_heartbeat_requires_it(
 
     duplicate = client.post(f"/executor-requests/{request['id']}/worker-attempts/lease")
     assert duplicate.status_code == 409
+
+
+def test_expired_lease_is_reconciled_and_cannot_heartbeat(
+    provenance_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = provenance_client
+    _, _, execution = setup_execution(client)
+    request = create_released_request(
+        client,
+        execution,
+        {"worktree": "repo", "preset": "pytest", "test_target": "tests"},
+    )
+    leased = client.post(f"/executor-requests/{request['id']}/worker-attempts/lease")
+    assert leased.status_code == 201
+    lease = leased.json()
+
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+    monkeypatch.setattr(worker_attempts_module, "utcnow", lambda: future)
+    reconciled = client.post("/worker-attempts/reconcile")
+    assert reconciled.status_code == 200
+    assert reconciled.json()["reconciled"] == 1
+
+    attempt = client.get(f"/worker-attempts/{lease['id']}")
+    assert attempt.status_code == 200
+    assert attempt.json()["status"] == "expired"
+
+    heartbeat = client.post(
+        f"/worker-attempts/{lease['id']}/heartbeat",
+        json={"lease_token": lease["lease_token"]},
+    )
+    assert heartbeat.status_code == 409
 
 
 def test_failed_request_can_retry_only_by_creating_new_attempt(
