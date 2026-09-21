@@ -236,7 +236,6 @@ def _file_mode(path: Path) -> str:
 
 
 def _working_paths(job: WorkerJob, staging: Path) -> tuple[set[str], bool]:
-    """Enumerate worktree drift without invoking Git content conversion filters."""
     index_tree = _git(job, staging, "write-tree")
     head_tree = _git(job, staging, "rev-parse", "--verify", "HEAD^{tree}")
     if not index_tree.ok or not head_tree.ok:
@@ -255,8 +254,7 @@ def _working_paths(job: WorkerJob, staging: Path) -> tuple[set[str], bool]:
 
     changed: set[str] = set()
     for mode, index_blob, path_text in entries:
-        relative = PurePosixPath(path_text)
-        target = staging.joinpath(*relative.parts)
+        target = staging.joinpath(*PurePosixPath(path_text).parts)
         if mode in {"100644", "100755"}:
             if target.is_symlink() or not target.is_file():
                 changed.add(path_text)
@@ -267,16 +265,13 @@ def _working_paths(job: WorkerJob, staging: Path) -> tuple[set[str], bool]:
             hashed = _git(job, staging, "hash-object", "--no-filters", "--", path_text)
             if not hashed.ok:
                 raise ValueError(f"Unable to hash tracked worktree file without filters: {path_text}")
-            observed = str(hashed.result.get("stdout") or "").strip().lower()
-            if observed != index_blob:
+            if str(hashed.result.get("stdout") or "").strip().lower() != index_blob:
                 changed.add(path_text)
         elif mode == "120000":
             if not target.is_symlink():
                 changed.add(path_text)
                 continue
-            expected = _git_blob_bytes(job, staging, index_blob)
-            observed = os.fsencode(os.readlink(target))
-            if observed != expected:
+            if os.fsencode(os.readlink(target)) != _git_blob_bytes(job, staging, index_blob):
                 changed.add(path_text)
         elif mode == "160000":
             raise ValueError("Controlled commit does not support gitlink/submodule index entries")
@@ -284,15 +279,7 @@ def _working_paths(job: WorkerJob, staging: Path) -> tuple[set[str], bool]:
             raise ValueError(f"Unsupported Git index mode during controlled scan: {mode}")
 
     untracked = _git(job, staging, "ls-files", "--others", "--exclude-standard", "-z")
-    ignored = _git(
-        job,
-        staging,
-        "ls-files",
-        "--others",
-        "--ignored",
-        "--exclude-standard",
-        "-z",
-    )
+    ignored = _git(job, staging, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
     if not untracked.ok or not ignored.ok:
         raise ValueError("Unable to enumerate untracked/ignored staging files")
     changed.update(_split_nul_paths(untracked.result.get("stdout")))
@@ -322,17 +309,13 @@ def _rollback_ref(
 ) -> str:
     ref = f"refs/heads/{branch_name}"
     reverted = _git(job, staging, "update-ref", ref, base_sha, commit_sha)
-    reset = _git(job, staging, "reset", "--mixed", "--quiet", base_sha)
-    return "completed" if reverted.ok and reset.ok else "incomplete"
+    synced = _git(job, staging, "read-tree", base_sha)
+    return "completed" if reverted.ok and synced.ok else "incomplete"
 
 
 def execute_create_commit(job: WorkerJob) -> WorkerResult:
     if job.backend != "subprocess-sandbox":
-        return WorkerResult(
-            False,
-            {"status": "unsupported", "backend": job.backend},
-            "create_commit currently uses only the fixed-argv Git plumbing backend",
-        )
+        return WorkerResult(False, {"status": "unsupported", "backend": job.backend}, "create_commit currently uses only the fixed-argv Git plumbing backend")
 
     _root, source, relative = _resolve_worktree(job)
     if not (source / ".git").exists():
@@ -345,9 +328,7 @@ def execute_create_commit(job: WorkerJob) -> WorkerResult:
     approved_digest = _valid_digest(job.payload.get("patch_digest"))
     changed_files = _changed_inventory(job.payload.get("changed_files"))
     message = _commit_message(job.payload.get("commit_message"))
-    author_name, author_email = _identity(
-        job.payload.get("author_name"), job.payload.get("author_email")
-    )
+    author_name, author_email = _identity(job.payload.get("author_name"), job.payload.get("author_email"))
     max_patch_bytes = int((job.payload.get("policy") or {}).get("max_patch_bytes") or 65_536)
 
     staging = (staging_root / staging_id).resolve(strict=True)
@@ -367,56 +348,22 @@ def execute_create_commit(job: WorkerJob) -> WorkerResult:
     observed_head = str(staging_head.result.get("stdout") or "").strip().lower()
     observed_branch = str(staging_branch.result.get("stdout") or "").strip()
     if observed_ref != base_sha or observed_head != base_sha or observed_branch != branch_name:
-        return WorkerResult(
-            False,
-            {
-                "status": "drift_detected",
-                "branch_name": branch_name,
-                "expected_base_sha": base_sha,
-                "observed_branch_sha": observed_ref,
-                "observed_staging_head": observed_head,
-                "external_effects": False,
-            },
-            "Controlled staging/branch moved after apply; commit aborted",
-        )
+        return WorkerResult(False, {"status": "drift_detected", "branch_name": branch_name, "expected_base_sha": base_sha, "observed_branch_sha": observed_ref, "observed_staging_head": observed_head, "external_effects": False}, "Controlled staging/branch moved after apply; commit aborted")
 
     expected_paths = {item["path"] for item in changed_files}
     working_paths, pre_staged = _working_paths(job, staging)
     if pre_staged:
-        return WorkerResult(
-            False,
-            {"status": "drift_detected", "reason": "pre_staged_index", "external_effects": False},
-            "Controlled staging index already contains staged changes",
-        )
+        return WorkerResult(False, {"status": "drift_detected", "reason": "pre_staged_index", "external_effects": False}, "Controlled staging index already contains staged changes")
     if working_paths != expected_paths:
-        return WorkerResult(
-            False,
-            {
-                "status": "drift_detected",
-                "reason": "changed_file_inventory",
-                "expected_paths": sorted(expected_paths),
-                "observed_paths": sorted(working_paths),
-                "external_effects": False,
-            },
-            "Controlled staging contains unapproved or missing changes",
-        )
+        return WorkerResult(False, {"status": "drift_detected", "reason": "changed_file_inventory", "expected_paths": sorted(expected_paths), "observed_paths": sorted(working_paths), "external_effects": False}, "Controlled staging contains unapproved or missing changes")
 
     with tempfile.TemporaryDirectory(prefix=f"superchat-commit-{job.request_id[:12]}-") as temp:
         temp_root = Path(temp)
         base_snapshot = temp_root / "base"
         _build_base_snapshot(job, source, base_sha, changed_files, base_snapshot)
-        _patch, digest, _size, _redacted, current_files = _review_applied_change(
-            base_snapshot,
-            staging,
-            changed_files,
-            max_patch_bytes=max_patch_bytes,
-        )
+        _patch, digest, _size, _redacted, current_files = _review_applied_change(base_snapshot, staging, changed_files, max_patch_bytes=max_patch_bytes)
         if digest != approved_digest:
-            return WorkerResult(
-                False,
-                {"status": "drift_detected", "reason": "patch_digest", "external_effects": False},
-                "Current staging digest differs from the human-approved digest",
-            )
+            return WorkerResult(False, {"status": "drift_detected", "reason": "patch_digest", "external_effects": False}, "Current staging digest differs from the human-approved digest")
         if [item.get("path") for item in current_files] != [item["path"] for item in changed_files]:
             raise ValueError("Current staging inventory differs from approved ordering")
 
@@ -430,19 +377,10 @@ def execute_create_commit(job: WorkerJob) -> WorkerResult:
             path_text = item["path"]
             status_value = item["status"]
             if status_value == "deleted":
-                removed = _git_with_env(
-                    job,
-                    source,
-                    "update-index",
-                    "--force-remove",
-                    "--",
-                    path_text,
-                    extra_env=index_env,
-                )
+                removed = _git_with_env(job, source, "update-index", "--force-remove", "--", path_text, extra_env=index_env)
                 if not removed.ok:
                     return WorkerResult(False, removed.result, f"Unable to remove approved path from index: {path_text}")
                 continue
-
             target = staging.joinpath(*PurePosixPath(path_text).parts)
             if target.is_symlink() or not target.is_file():
                 raise ValueError(f"Approved commit path is not a regular file: {path_text}")
@@ -455,31 +393,11 @@ def execute_create_commit(job: WorkerJob) -> WorkerResult:
                 if base_mode is not None:
                     raise ValueError(f"Added approved path already exists in base tree: {path_text}")
                 mode = _file_mode(target)
-
-            hashed = _git_with_env(
-                job,
-                staging,
-                "hash-object",
-                "-w",
-                "--no-filters",
-                "--",
-                path_text,
-                extra_env=index_env,
-            )
+            hashed = _git_with_env(job, staging, "hash-object", "-w", "--no-filters", "--", path_text, extra_env=index_env)
             if not hashed.ok:
                 return WorkerResult(False, hashed.result, f"Unable to hash approved path: {path_text}")
             blob_sha = str(hashed.result.get("stdout") or "").strip()
-            updated = _git_with_env(
-                job,
-                source,
-                "update-index",
-                "--add",
-                "--cacheinfo",
-                mode,
-                blob_sha,
-                path_text,
-                extra_env=index_env,
-            )
+            updated = _git_with_env(job, source, "update-index", "--add", "--cacheinfo", mode, blob_sha, path_text, extra_env=index_env)
             if not updated.ok:
                 return WorkerResult(False, updated.result, f"Unable to update controlled index: {path_text}")
 
@@ -487,78 +405,27 @@ def execute_create_commit(job: WorkerJob) -> WorkerResult:
         if not tree.ok:
             return WorkerResult(False, tree.result, "Unable to write controlled commit tree")
         tree_sha = str(tree.result.get("stdout") or "").strip().lower()
-
-        tree_paths = _git(
-            job,
-            source,
-            "diff-tree",
-            "--no-commit-id",
-            "--name-only",
-            "--no-renames",
-            "--no-ext-diff",
-            "--no-textconv",
-            "-r",
-            "-z",
-            base_sha,
-            tree_sha,
-            "--",
-        )
+        tree_paths = _git(job, source, "diff-tree", "--no-commit-id", "--name-only", "--no-renames", "--no-ext-diff", "--no-textconv", "-r", "-z", base_sha, tree_sha, "--")
         if not tree_paths.ok:
             return WorkerResult(False, tree_paths.result, "Unable to inspect controlled commit tree")
         if set(_split_nul_paths(tree_paths.result.get("stdout"))) != expected_paths:
-            return WorkerResult(
-                False,
-                {"status": "rejected", "reason": "tree_path_mismatch", "external_effects": False},
-                "Controlled commit tree contains paths outside the approved inventory",
-            )
+            return WorkerResult(False, {"status": "rejected", "reason": "tree_path_mismatch", "external_effects": False}, "Controlled commit tree contains paths outside the approved inventory")
 
-        identity_env = {
-            "GIT_AUTHOR_NAME": author_name,
-            "GIT_AUTHOR_EMAIL": author_email,
-            "GIT_COMMITTER_NAME": author_name,
-            "GIT_COMMITTER_EMAIL": author_email,
-        }
-        committed = _git_with_env(
-            job,
-            source,
-            "-c",
-            "commit.gpgSign=false",
-            "commit-tree",
-            tree_sha,
-            "-p",
-            base_sha,
-            "-m",
-            message,
-            extra_env=identity_env,
-        )
+        identity_env = {"GIT_AUTHOR_NAME": author_name, "GIT_AUTHOR_EMAIL": author_email, "GIT_COMMITTER_NAME": author_name, "GIT_COMMITTER_EMAIL": author_email}
+        committed = _git_with_env(job, source, "-c", "commit.gpgSign=false", "commit-tree", tree_sha, "-p", base_sha, "-m", message, extra_env=identity_env)
         if not committed.ok:
             return WorkerResult(False, committed.result, "Unable to create controlled commit object")
         commit_sha = str(committed.result.get("stdout") or "").strip().lower()
         _valid_sha(commit_sha, field="created commit SHA")
 
-        moved = _git(
-            job,
-            source,
-            "update-ref",
-            f"refs/heads/{branch_name}",
-            commit_sha,
-            base_sha,
-        )
+        moved = _git(job, source, "update-ref", f"refs/heads/{branch_name}", commit_sha, base_sha)
         if not moved.ok:
-            return WorkerResult(
-                False,
-                {"status": "drift_detected", "reason": "ref_compare_and_swap", "external_effects": False},
-                "Controlled branch moved before atomic commit publication",
-            )
+            return WorkerResult(False, {"status": "drift_detected", "reason": "ref_compare_and_swap", "external_effects": False}, "Controlled branch moved before atomic commit publication")
 
-        reset = _git(job, staging, "reset", "--mixed", "--quiet", commit_sha)
-        if not reset.ok:
+        synced = _git(job, staging, "read-tree", commit_sha)
+        if not synced.ok:
             rollback = _rollback_ref(job, staging, branch_name, base_sha, commit_sha)
-            return WorkerResult(
-                False,
-                {"status": "rollback", "rollback": rollback, "external_effects": rollback != "completed"},
-                "Commit ref was created but staging index synchronization failed",
-            )
+            return WorkerResult(False, {"status": "rollback", "rollback": rollback, "external_effects": rollback != "completed"}, "Commit ref was created but staging index synchronization failed")
 
         try:
             head = _git(job, staging, "rev-parse", "--verify", "HEAD")
@@ -572,59 +439,16 @@ def execute_create_commit(job: WorkerJob) -> WorkerResult:
                 raise ValueError("Created commit parent differs from reviewed base SHA")
             if str(branch_after.result.get("stdout") or "").strip().lower() != commit_sha:
                 raise ValueError("Controlled branch does not reference the created commit")
-
             post_paths, post_staged = _working_paths(job, staging)
             if post_staged or post_paths:
                 raise ValueError("Controlled staging is not clean after commit")
-
-            _post_patch, post_digest, _post_size, _post_redacted, post_files = _review_applied_change(
-                base_snapshot,
-                staging,
-                changed_files,
-                max_patch_bytes=max_patch_bytes,
-            )
+            _post_patch, post_digest, _post_size, _post_redacted, post_files = _review_applied_change(base_snapshot, staging, changed_files, max_patch_bytes=max_patch_bytes)
             if post_digest != approved_digest:
                 raise ValueError("Created commit content digest differs from approved digest")
             if [item.get("path") for item in post_files] != [item["path"] for item in changed_files]:
                 raise ValueError("Created commit inventory differs from approved inventory")
         except Exception as exc:
             rollback = _rollback_ref(job, staging, branch_name, base_sha, commit_sha)
-            return WorkerResult(
-                False,
-                {
-                    "status": "rollback",
-                    "commit_sha": commit_sha,
-                    "rollback": rollback,
-                    "external_effects": rollback != "completed",
-                },
-                str(exc),
-            )
+            return WorkerResult(False, {"status": "rollback", "commit_sha": commit_sha, "rollback": rollback, "external_effects": rollback != "completed"}, str(exc))
 
-    return WorkerResult(
-        True,
-        {
-            "status": "committed_local",
-            "action": "create_commit",
-            "branch_name": branch_name,
-            "base_sha": base_sha,
-            "commit_sha": commit_sha,
-            "parent_sha": base_sha,
-            "tree_sha": tree_sha,
-            "patch_digest": approved_digest,
-            "changed_files": changed_files,
-            "staging_id": staging_id,
-            "source_worktree": relative,
-            "author_name": author_name,
-            "author_email": author_email,
-            "commit_message": message,
-            "commit_created": True,
-            "push_performed": False,
-            "pull_request_created": False,
-            "network_policy": "no_network_operation_by_contract",
-            "index_policy": "temporary_index_approved_paths_only_no_filters",
-            "hook_policy": "disabled_by_server_git_config",
-            "external_effects": True,
-            "persistence": "local_git_commit_only",
-        },
-        None,
-    )
+    return WorkerResult(True, {"status": "committed_local", "action": "create_commit", "branch_name": branch_name, "base_sha": base_sha, "commit_sha": commit_sha, "parent_sha": base_sha, "tree_sha": tree_sha, "patch_digest": approved_digest, "changed_files": changed_files, "staging_id": staging_id, "source_worktree": relative, "author_name": author_name, "author_email": author_email, "commit_message": message, "commit_created": True, "push_performed": False, "pull_request_created": False, "network_policy": "no_network_operation_by_contract", "index_policy": "temporary_index_approved_paths_only_no_filters", "hook_policy": "disabled_by_server_git_config", "external_effects": True, "persistence": "local_git_commit_only"}, None)
