@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.agent_handoff import sanitize_value
 from app.agent_models import ExecutorRequest
+from app.core.config import get_settings
 from app.models import utcnow
 from app.worker_models import WorkerAttempt
 
@@ -24,6 +25,15 @@ def _token_hash(token: str) -> str:
 
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def _effective_lease_seconds(requested_seconds: int) -> int:
+    # A tentativa síncrona não pode ser reconciliada como órfã enquanto um
+    # `run_tests` ainda está dentro do maior timeout permitido. A margem cobre
+    # startup/teardown do processo separado do worker.
+    settings = get_settings()
+    timeout_floor = int(settings.executor_max_timeout_seconds) + 30
+    return max(10, int(requested_seconds), timeout_floor)
 
 
 def verify_lease_token(attempt: WorkerAttempt, token: str) -> bool:
@@ -82,6 +92,7 @@ def create_attempt(
 
     now = utcnow()
     token = secrets.token_urlsafe(32)
+    effective_lease = _effective_lease_seconds(lease_seconds)
     attempt = WorkerAttempt(
         executor_request_id=request.id,
         execution_id=request.execution_id,
@@ -89,7 +100,7 @@ def create_attempt(
         attempt_number=count + 1,
         status="leased",
         lease_token_hash=_token_hash(token),
-        lease_expires_at=now + timedelta(seconds=max(10, int(lease_seconds))),
+        lease_expires_at=now + timedelta(seconds=effective_lease),
         heartbeat_at=now,
         provenance_json={},
         result_json={},
@@ -106,7 +117,7 @@ def heartbeat_attempt(attempt: WorkerAttempt, *, lease_seconds: int) -> None:
     if _aware(attempt.lease_expires_at) < now:
         raise ValueError("Worker attempt lease has expired")
     attempt.heartbeat_at = now
-    attempt.lease_expires_at = now + timedelta(seconds=max(10, int(lease_seconds)))
+    attempt.lease_expires_at = now + timedelta(seconds=_effective_lease_seconds(lease_seconds))
 
 
 def mark_attempt_running(attempt: WorkerAttempt) -> None:
