@@ -206,9 +206,9 @@ def test_actions_without_real_contract_have_no_effect(tmp_path) -> None:
     root = tmp_path / "root"
     (root / "repo").mkdir(parents=True)
     adapter = make_adapter(root)
-    outcome = adapter.execute(command("create_commit", {"worktree": "repo", "message": "noop"}))
+    outcome = adapter.execute(command("create_pull_request", {"worktree": "repo"}))
     assert outcome.ok is False
-    assert outcome.result == {"status": "unsupported", "action": "create_commit"}
+    assert outcome.result == {"status": "unsupported", "action": "create_pull_request"}
     assert "no isolated-local execution contract" in (outcome.error or "")
 
 
