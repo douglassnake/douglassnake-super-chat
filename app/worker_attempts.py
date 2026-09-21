@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -20,6 +20,10 @@ TERMINAL_ATTEMPT_STATES = {"completed", "failed", "orphaned", "expired"}
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 def verify_lease_token(attempt: WorkerAttempt, token: str) -> bool:
@@ -99,7 +103,7 @@ def heartbeat_attempt(attempt: WorkerAttempt, *, lease_seconds: int) -> None:
     if attempt.status not in ACTIVE_ATTEMPT_STATES:
         raise ValueError(f"Worker attempt is {attempt.status} and cannot heartbeat")
     now = utcnow()
-    if attempt.lease_expires_at < now:
+    if _aware(attempt.lease_expires_at) < now:
         raise ValueError("Worker attempt lease has expired")
     attempt.heartbeat_at = now
     attempt.lease_expires_at = now + timedelta(seconds=max(10, int(lease_seconds)))
