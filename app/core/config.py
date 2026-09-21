@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     executor_worker_lease_seconds: int = 120
     executor_worker_max_attempts: int = 3
 
+    # M8.8: alteração efêmera. Limites exclusivamente server-side.
+    executor_modify_max_files: int = 20
+    executor_modify_max_operations: int = 40
+    executor_modify_max_total_write_bytes: int = 262_144
+    executor_modify_max_patch_bytes: int = 131_072
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
