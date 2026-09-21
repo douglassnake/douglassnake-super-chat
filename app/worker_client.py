@@ -40,7 +40,11 @@ class ProcessWorkerClient:
         provenance = dict(result.result.get("provenance") or {})
         if not provenance:
             raise WorkerClientError("Worker result is missing provenance")
-        expected_job = worker_job_digest(job.to_dict())
+        # The worker reconstructs WorkerJob from JSON. Normalize through the same
+        # parser before hashing so equivalent values such as 5 and 5.0 do not
+        # produce different digests merely because of Python runtime types.
+        normalized_job = WorkerJob.from_dict(job.to_dict()).to_dict()
+        expected_job = worker_job_digest(normalized_job)
         if provenance.get("job_digest") != expected_job:
             raise WorkerClientError("Worker job digest mismatch")
         expected_result = worker_result_digest(
