@@ -45,8 +45,8 @@ class Settings(BaseSettings):
     # M8.8: alteração efêmera. Limites exclusivamente server-side.
     executor_modify_max_files: int = 20
     executor_modify_max_operations: int = 40
-    executor_modify_max_total_write_bytes: int = 262_144
-    executor_modify_max_patch_bytes: int = 131_072
+    executor_modify_max_total_write_bytes: int = 65_536
+    executor_modify_max_patch_bytes: int = 65_536
 
     model_config = SettingsConfigDict(
         env_file=".env",
