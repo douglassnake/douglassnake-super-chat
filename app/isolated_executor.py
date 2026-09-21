@@ -17,6 +17,7 @@ ISOLATED_EXECUTABLE_ACTIONS = frozenset(
         "create_branch",
         "apply_git_change",
         "create_commit",
+        "publish_branch",
     }
 )
 RUN_TESTS_KEYS = frozenset({"worktree", "preset", "test_target", "timeout_seconds"})
@@ -49,6 +50,18 @@ CREATE_COMMIT_KEYS = frozenset(
         "commit_message",
     }
 )
+PUBLISH_BRANCH_KEYS = frozenset(
+    {
+        "commit_request_id",
+        "worktree",
+        "staging_id",
+        "branch_name",
+        "base_sha",
+        "commit_sha",
+        "patch_digest",
+        "changed_files",
+    }
+)
 
 
 class IsolatedLocalExecutorAdapter:
@@ -78,6 +91,8 @@ class IsolatedLocalExecutorAdapter:
         git_staging_root: str | None = None,
         git_author_name: str = "Super Chat Executor",
         git_author_email: str = "superchat-executor@localhost",
+        git_publish_remote: str | None = None,
+        git_publish_remote_id: str = "controlled-bare",
         worker_client: ProcessWorkerClient | None = None,
     ) -> None:
         self.enabled = bool(enabled)
@@ -102,6 +117,8 @@ class IsolatedLocalExecutorAdapter:
         self.modify_max_patch_bytes = max(1, int(modify_max_patch_bytes))
         self.git_author_name = str(git_author_name or "").strip()
         self.git_author_email = str(git_author_email or "").strip()
+        self.git_publish_remote_raw = str(git_publish_remote or "").strip() or None
+        self.git_publish_remote_id = str(git_publish_remote_id or "controlled-bare").strip()
         self.worker_client = worker_client or ProcessWorkerClient()
         self.root: Path | None = None
         self.git_staging_root: Path | None = None
@@ -140,6 +157,8 @@ class IsolatedLocalExecutorAdapter:
             git_staging_root=settings.executor_git_staging_root,
             git_author_name=settings.executor_git_author_name,
             git_author_email=settings.executor_git_author_email,
+            git_publish_remote=settings.executor_git_publish_remote,
+            git_publish_remote_id=settings.executor_git_publish_remote_id,
         )
 
     def execute(self, command: ExecutorCommand) -> ExecutorOutcome:
@@ -160,6 +179,8 @@ class IsolatedLocalExecutorAdapter:
             return self._apply_git_change(command)
         if command.action == "create_commit":
             return self._create_commit(command)
+        if command.action == "publish_branch":
+            return self._publish_branch(command)
         return self._run_tests(command)
 
     def _ensure_available(self) -> None:
@@ -340,6 +361,23 @@ class IsolatedLocalExecutorAdapter:
             raise ExecutorUnavailable("Configured Git staging root does not exist or is not a directory")
         return self.git_staging_root.resolve(strict=True)
 
+    def _git_publish_remote(self) -> str:
+        raw = self.git_publish_remote_raw
+        if not raw:
+            raise ExecutorUnavailable("EXECUTOR_GIT_PUBLISH_REMOTE is not configured")
+        if "\x00" in raw or "\n" in raw or "\r" in raw or "://" in raw:
+            raise ExecutorUnavailable("Configured Git publish remote must be an absolute local path")
+        candidate = Path(raw)
+        if not candidate.is_absolute():
+            raise ExecutorUnavailable("Configured Git publish remote must be an absolute local path")
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (FileNotFoundError, OSError) as exc:
+            raise ExecutorUnavailable("Configured Git publish remote does not exist") from exc
+        if not resolved.is_dir():
+            raise ExecutorUnavailable("Configured Git publish remote must be a directory")
+        return str(resolved)
+
     def _apply_git_change(self, command: ExecutorCommand) -> ExecutorOutcome:
         payload = command.payload
         self._validate_keys(payload, APPLY_GIT_CHANGE_KEYS, "apply_git_change")
@@ -371,6 +409,22 @@ class IsolatedLocalExecutorAdapter:
         worker_payload["policy"] = {
             "max_patch_bytes": self.modify_max_patch_bytes,
         }
+        return self._dispatch(
+            command,
+            relative_worktree=relative,
+            payload=worker_payload,
+            timeout=min(self.timeout_seconds, self.max_timeout_seconds),
+            backend="subprocess-sandbox",
+        )
+
+    def _publish_branch(self, command: ExecutorCommand) -> ExecutorOutcome:
+        payload = command.payload
+        self._validate_keys(payload, PUBLISH_BRANCH_KEYS, "publish_branch")
+        _worktree, relative = self._worktree(payload)
+        worker_payload = dict(payload)
+        worker_payload["staging_root"] = str(self._git_staging())
+        worker_payload["remote_path"] = self._git_publish_remote()
+        worker_payload["remote_id"] = self.git_publish_remote_id
         return self._dispatch(
             command,
             relative_worktree=relative,
