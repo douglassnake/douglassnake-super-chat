@@ -34,6 +34,10 @@ from app.git_commit_resolver import (
     GitCommitResolutionError,
     resolve_create_commit_payload,
 )
+from app.git_publish_resolver import (
+    GitPublishResolutionError,
+    resolve_publish_branch_payload,
+)
 from app.models import utcnow
 from app.worker_attempts import create_attempt, finalize_attempt, mark_attempt_running
 from app.worker_models import WorkerAttempt
@@ -156,6 +160,17 @@ def create_executor_request(
         except GitCommitResolutionError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         cleaned_payload = bounded_payload(resolved, field_name="Resolved Git commit payload")
+    elif payload.action == "publish_branch":
+        if payload.adapter_type != "isolated-local":
+            raise HTTPException(
+                status_code=422,
+                detail="publish_branch requires the isolated-local adapter",
+            )
+        try:
+            resolved = resolve_publish_branch_payload(db, execution, payload.payload)
+        except GitPublishResolutionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        cleaned_payload = bounded_payload(resolved, field_name="Resolved Git publish payload")
     else:
         cleaned_payload = bounded_payload(payload.payload, field_name="Executor payload")
 
