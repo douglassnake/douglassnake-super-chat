@@ -16,6 +16,7 @@ ISOLATED_EXECUTABLE_ACTIONS = frozenset(
         "modify_worktree",
         "create_branch",
         "apply_git_change",
+        "create_commit",
     }
 )
 RUN_TESTS_KEYS = frozenset({"worktree", "preset", "test_target", "timeout_seconds"})
@@ -33,6 +34,19 @@ APPLY_GIT_CHANGE_KEYS = frozenset(
         "operations",
         "branch_name",
         "base_sha",
+    }
+)
+CREATE_COMMIT_KEYS = frozenset(
+    {
+        "apply_request_id",
+        "approval_id",
+        "worktree",
+        "staging_id",
+        "branch_name",
+        "base_sha",
+        "patch_digest",
+        "changed_files",
+        "commit_message",
     }
 )
 
@@ -62,6 +76,8 @@ class IsolatedLocalExecutorAdapter:
         modify_max_total_write_bytes: int = 65_536,
         modify_max_patch_bytes: int = 65_536,
         git_staging_root: str | None = None,
+        git_author_name: str = "Super Chat Executor",
+        git_author_email: str = "superchat-executor@localhost",
         worker_client: ProcessWorkerClient | None = None,
     ) -> None:
         self.enabled = bool(enabled)
@@ -84,6 +100,8 @@ class IsolatedLocalExecutorAdapter:
         self.modify_max_operations = max(1, int(modify_max_operations))
         self.modify_max_total_write_bytes = max(1, int(modify_max_total_write_bytes))
         self.modify_max_patch_bytes = max(1, int(modify_max_patch_bytes))
+        self.git_author_name = str(git_author_name or "").strip()
+        self.git_author_email = str(git_author_email or "").strip()
         self.worker_client = worker_client or ProcessWorkerClient()
         self.root: Path | None = None
         self.git_staging_root: Path | None = None
@@ -120,6 +138,8 @@ class IsolatedLocalExecutorAdapter:
             modify_max_total_write_bytes=settings.executor_modify_max_total_write_bytes,
             modify_max_patch_bytes=settings.executor_modify_max_patch_bytes,
             git_staging_root=settings.executor_git_staging_root,
+            git_author_name=settings.executor_git_author_name,
+            git_author_email=settings.executor_git_author_email,
         )
 
     def execute(self, command: ExecutorCommand) -> ExecutorOutcome:
@@ -138,6 +158,8 @@ class IsolatedLocalExecutorAdapter:
             return self._create_branch(command)
         if command.action == "apply_git_change":
             return self._apply_git_change(command)
+        if command.action == "create_commit":
+            return self._create_commit(command)
         return self._run_tests(command)
 
     def _ensure_available(self) -> None:
@@ -311,20 +333,42 @@ class IsolatedLocalExecutorAdapter:
             backend="subprocess-sandbox",
         )
 
-    def _apply_git_change(self, command: ExecutorCommand) -> ExecutorOutcome:
-        payload = command.payload
-        self._validate_keys(payload, APPLY_GIT_CHANGE_KEYS, "apply_git_change")
-        _worktree, relative = self._worktree(payload)
+    def _git_staging(self) -> Path:
         if self.git_staging_root is None:
             raise ExecutorUnavailable("EXECUTOR_GIT_STAGING_ROOT is not configured")
         if not self.git_staging_root.exists() or not self.git_staging_root.is_dir():
             raise ExecutorUnavailable("Configured Git staging root does not exist or is not a directory")
+        return self.git_staging_root.resolve(strict=True)
+
+    def _apply_git_change(self, command: ExecutorCommand) -> ExecutorOutcome:
+        payload = command.payload
+        self._validate_keys(payload, APPLY_GIT_CHANGE_KEYS, "apply_git_change")
+        _worktree, relative = self._worktree(payload)
         worker_payload = dict(payload)
-        worker_payload["staging_root"] = str(self.git_staging_root.resolve(strict=True))
+        worker_payload["staging_root"] = str(self._git_staging())
         worker_payload["policy"] = {
             "max_files": self.modify_max_files,
             "max_operations": self.modify_max_operations,
             "max_total_write_bytes": self.modify_max_total_write_bytes,
+            "max_patch_bytes": self.modify_max_patch_bytes,
+        }
+        return self._dispatch(
+            command,
+            relative_worktree=relative,
+            payload=worker_payload,
+            timeout=min(self.timeout_seconds, self.max_timeout_seconds),
+            backend="subprocess-sandbox",
+        )
+
+    def _create_commit(self, command: ExecutorCommand) -> ExecutorOutcome:
+        payload = command.payload
+        self._validate_keys(payload, CREATE_COMMIT_KEYS, "create_commit")
+        _worktree, relative = self._worktree(payload)
+        worker_payload = dict(payload)
+        worker_payload["staging_root"] = str(self._git_staging())
+        worker_payload["author_name"] = self.git_author_name
+        worker_payload["author_email"] = self.git_author_email
+        worker_payload["policy"] = {
             "max_patch_bytes": self.modify_max_patch_bytes,
         }
         return self._dispatch(
