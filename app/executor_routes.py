@@ -13,6 +13,7 @@ from app.agent_execution import append_execution_event
 from app.agent_handoff import sanitize_value
 from app.agent_models import AgentExecution, AgentHandoff, ExecutorRequest
 from app.agent_task_pack import redact_secrets
+from app.core.config import get_settings
 from app.database import get_db
 from app.executor_control import (
     ExecutorUnavailable,
@@ -26,6 +27,8 @@ from app.executor_control import (
     validate_executor_action,
 )
 from app.models import utcnow
+from app.worker_attempts import create_attempt, finalize_attempt, mark_attempt_running
+from app.worker_models import WorkerAttempt
 
 
 router = APIRouter(tags=["controlled-executor"])
@@ -248,6 +251,45 @@ def execute_executor_request(request_id: UUID, db: Session = Depends(get_db)) ->
             detail=f"Executor adapter {request.adapter_type!r} is not configured for automatic execution",
         )
 
+    worker_attempt: WorkerAttempt | None = None
+    if request.adapter_type == "isolated-local":
+        active_attempts = list(
+            db.scalars(
+                select(WorkerAttempt).where(
+                    WorkerAttempt.executor_request_id == request.id,
+                    WorkerAttempt.status.in_(["leased", "running"]),
+                )
+            ).all()
+        )
+        running = next((item for item in active_attempts if item.status == "running"), None)
+        if running is not None:
+            raise HTTPException(status_code=409, detail="A worker attempt is already running")
+        leased = next((item for item in active_attempts if item.status == "leased"), None)
+        if leased is not None:
+            worker_attempt = leased
+        else:
+            settings = get_settings()
+            try:
+                worker_attempt, _lease_token = create_attempt(
+                    db,
+                    request,
+                    lease_seconds=settings.executor_worker_lease_seconds,
+                    max_attempts=settings.executor_worker_max_attempts,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        try:
+            mark_attempt_running(worker_attempt)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        append_execution_event(
+            db,
+            execution,
+            event_type="worker_attempt_started",
+            message=f"Worker attempt #{worker_attempt.attempt_number} started",
+            payload={"attempt_id": str(worker_attempt.id), "attempt_number": worker_attempt.attempt_number},
+        )
+
     request.status = "running"
     request.started_at = utcnow()
     append_execution_event(
@@ -270,19 +312,43 @@ def execute_executor_request(request_id: UUID, db: Session = Depends(get_db)) ->
 
     now = utcnow()
     if outcome is not None and outcome.ok:
+        clean_result = bounded_result(outcome.result)
         request.status = "completed"
-        request.result_json = bounded_result(outcome.result)
+        request.result_json = clean_result
         request.error_text = None
         request.completed_at = now
         event_status = "completed"
         event_message = f"Executor request completed: {request.action}"
     else:
+        clean_result = bounded_result(outcome.result if outcome is not None else {})
         request.status = "failed"
-        request.result_json = bounded_result(outcome.result if outcome is not None else {})
+        request.result_json = clean_result
         request.error_text = adapter_error or "Executor adapter reported failure"
         request.failed_at = now
         event_status = "failed"
         event_message = request.error_text
+
+    if worker_attempt is not None:
+        finalize_attempt(
+            worker_attempt,
+            ok=(outcome is not None and outcome.ok),
+            result=clean_result,
+            error=request.error_text,
+        )
+        append_execution_event(
+            db,
+            execution,
+            event_type="worker_attempt_result",
+            message=f"Worker attempt #{worker_attempt.attempt_number} {worker_attempt.status}",
+            payload={
+                "attempt_id": str(worker_attempt.id),
+                "attempt_number": worker_attempt.attempt_number,
+                "status": worker_attempt.status,
+                "worker_id": worker_attempt.worker_id,
+                "job_digest": worker_attempt.job_digest,
+                "result_digest": worker_attempt.result_digest,
+            },
+        )
 
     append_execution_event(
         db,
