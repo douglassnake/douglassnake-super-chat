@@ -48,63 +48,70 @@ Embeddings/pgvector somente se benchmark privado com consultas reais demonstrar 
 ## M8 — Automação e agentes
 
 ### M8.0 — Agent Task Packs
-Status: **concluído na branch `codex/m8-agent-task-packs`**.
+Status: **concluído**.
 
 ### M8.1 — handoff assistido e auditável
-Status: **concluído na branch `codex/m8-1-agent-handoffs`**.
+Status: **concluído**.
 
 ### M8.2 — acompanhamento de execução e evidências
-Status: **concluído na branch `codex/m8-2-execution-tracking`**.
+Status: **concluído**.
 
 ### M8.3 — verificação externa GitHub somente leitura
-Status: **concluído na branch `codex/m8-3-github-verification`**.
+Status: **concluído**.
 
 ### M8.4 — executor controlado
-Status: **concluído na branch `codex/m8-4-controlled-executor`**.
+Status: **concluído**.
 
 ### M8.5 — adapter local isolado
-Status: **concluído na branch `codex/m8-5-isolated-adapter`**.
+Status: **concluído**.
 
-Capacidades reais: `read_repository` somente metadata e `run_tests` somente preset server-side `pytest`.
+Capacidades reais iniciais: `read_repository` somente metadata e `run_tests` somente preset server-side `pytest`.
 
 ### M8.6 — hardening do worker
-Status: **concluído na branch `codex/m8-6-worker-hardening`**.
+Status: **concluído**.
 
-Entregas:
-- `WorkerJob` JSON versionado (`schema_version=1`);
-- processo de worker separado da API;
-- backend `subprocess-sandbox` e contrato `container` opcional;
-- cópia temporária do worktree para testes;
-- limites de CPU, memória, PIDs, NOFILE e FSIZE quando suportados;
-- ambiente mínimo sem secrets;
-- timeout interno + deadline externo;
-- stdout/stderr limitados e redigidos;
-- `--network none`, filesystem read-only, cap-drop e no-new-privileges no contrato container;
-- nenhum Docker socket;
-- ações de escrita permanecem `unsupported`.
+Worker separado da API, workspace efêmero para testes, limites de recurso, ambiente mínimo, timeout, redaction e contrato container sem rede por padrão.
 
 ### M8.7 — proveniência e reconciliação do worker
-Status: **concluído na branch `codex/m8-7-worker-provenance` após CI final verde**.
+Status: **concluído na branch `codex/m8-7-worker-provenance`**.
+
+Entregas principais:
+- `WorkerAttempt` persistente e numerado;
+- identidade do worker;
+- `job_digest` e `result_digest` SHA-256;
+- lease/heartbeat;
+- reconciliação `expired/orphaned`;
+- retry explícito com nova tentativa;
+- máximo de tentativas server-side;
+- eventos append-only.
+
+### M8.8 — alteração efêmera e diff revisável
+Status: **concluído na branch `codex/m8-8-ephemeral-diff` após CI funcional verde**.
 
 Entregas:
-- migration `0007_worker_attempts`;
-- `WorkerAttempt` persistente com tentativas numeradas;
-- identidade de worker, PID e fingerprint de host;
-- `job_digest` e `result_digest` SHA-256;
-- validação dos digests pela API antes de aceitar resultado;
-- lease com token aleatório e somente hash persistido;
-- heartbeat autenticado;
-- reconciliação de leases `expired/orphaned`;
-- request em execução fica `failed` quando sua tentativa órfã é reconciliada;
-- retry explícito separado de replay;
-- retry cria nova tentativa e preserva tentativa terminal anterior;
-- máximo de tentativas definido server-side;
-- eventos append-only de lease, início, resultado, órfão e retry;
-- documentação `docs/WORKER_PROVENANCE.md`;
-- imagem container deve ser pinada por digest antes de qualquer capacidade futura de escrita.
+- `modify_worktree` como primeira escrita real do executor;
+- escrita somente em cópia temporária do worktree;
+- operações permitidas: `write_text` e `delete_file`;
+- nenhum shell, script, executável, argv ou patch arbitrário fornecido pelo cliente;
+- paths relativos POSIX; bloqueio de absoluto, `..`, NUL, backslash e symlink;
+- arquivos binários/non-UTF-8 fora do contrato;
+- limites server-side de arquivos, operações, bytes escritos e patch;
+- hard caps adicionais dentro do worker;
+- unified diff revisável;
+- inventário `added/modified/deleted`;
+- `patch_digest` SHA-256 calculado após redaction;
+- secrets detectáveis bloqueados/redigidos;
+- resultado marcado `external_effects=false` e `workspace_persistence=ephemeral_only`;
+- worktree original permanece sem escrita por design;
+- proveniência, lease e tentativa do M8.7 preservados;
+- documentação `docs/WORKTREE_DIFF.md`.
+
+Capacidades reais atuais:
+- `read_repository` → metadata;
+- `run_tests` → pytest;
+- `modify_worktree` → proposta efêmera + diff.
 
 Continuam sem implementação real:
-- `modify_worktree`;
 - `create_branch`;
 - `create_commit`;
 - `create_pull_request`.
@@ -117,21 +124,20 @@ Continuam proibidos:
 - escrita externa genérica;
 - shell/comando/binário/argv arbitrário.
 
-### M8.8 — preparação para escrita Git controlada
+### M8.9 — persistência Git de proposta aprovada
 Status: **futuro/condicional**.
 
-Antes de habilitar qualquer escrita real:
-- imagem/container pinado por digest e verificado;
-- identidade Git exclusiva do executor;
-- worktree efêmero dedicado por tentativa;
-- patch/diff como artefato antes de persistir mudanças;
-- política de path allowlist/denylist por projeto;
-- limite de quantidade/tamanho de arquivos modificados;
-- proibição explícita de secrets, `.env`, chaves e arquivos fora do projeto;
-- `modify_worktree` separado de `create_branch` e `create_commit`;
-- aprovação humana entre diff gerado e persistência Git;
-- `create_pull_request` em etapa separada;
-- merge, deploy e publish continuam fora.
+Antes de persistir qualquer patch no Git:
+- proposta M8.8 deve possuir digest estável e aprovação humana específica;
+- branch deve ser criado por autorização independente;
+- identidade Git do executor deve ser exclusiva e configurada no servidor;
+- aplicar somente o patch aprovado, rejeitando digest divergente;
+- validar novamente paths, secrets, tamanho e estado-base do worktree;
+- detectar drift entre base revisada e base atual;
+- commit deve exigir autorização separada da alteração;
+- push/PR em etapas distintas;
+- imagem de worker/container deve ser pinada por digest antes de qualquer execução de código ligada à persistência Git;
+- merge/deploy/publish permanecem fora.
 
 ## Regra de evolução
 
@@ -146,4 +152,5 @@ Não ampliar autonomia antes de existir:
 8. isolamento e limites de recurso;
 9. worker separado e auditável;
 10. proveniência/reconciliação;
-11. diff revisável antes de escrita Git real.
+11. diff revisável;
+12. aprovação por digest antes de escrita Git persistente.
