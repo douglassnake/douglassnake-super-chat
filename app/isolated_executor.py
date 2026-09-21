@@ -9,9 +9,12 @@ from app.worker_client import ProcessWorkerClient, WorkerClientError
 from app.worker_runtime import WorkerJob, WorkerLimits
 
 
-ISOLATED_EXECUTABLE_ACTIONS = frozenset({"read_repository", "run_tests"})
+ISOLATED_EXECUTABLE_ACTIONS = frozenset(
+    {"read_repository", "run_tests", "modify_worktree"}
+)
 RUN_TESTS_KEYS = frozenset({"worktree", "preset", "test_target", "timeout_seconds"})
 READ_REPOSITORY_KEYS = frozenset({"worktree", "scope"})
+MODIFY_WORKTREE_KEYS = frozenset({"worktree", "operations"})
 
 
 class IsolatedLocalExecutorAdapter:
@@ -34,6 +37,10 @@ class IsolatedLocalExecutorAdapter:
         worker_file_size_mb: int = 64,
         container_runtime: str = "docker",
         container_image: str = "python:3.13-slim",
+        modify_max_files: int = 20,
+        modify_max_operations: int = 40,
+        modify_max_total_write_bytes: int = 65_536,
+        modify_max_patch_bytes: int = 65_536,
         worker_client: ProcessWorkerClient | None = None,
     ) -> None:
         self.enabled = bool(enabled)
@@ -52,6 +59,10 @@ class IsolatedLocalExecutorAdapter:
         self.worker_file_size_mb = max(1, int(worker_file_size_mb))
         self.container_runtime = str(container_runtime or "docker")
         self.container_image = str(container_image or "python:3.13-slim")
+        self.modify_max_files = max(1, int(modify_max_files))
+        self.modify_max_operations = max(1, int(modify_max_operations))
+        self.modify_max_total_write_bytes = max(1, int(modify_max_total_write_bytes))
+        self.modify_max_patch_bytes = max(1, int(modify_max_patch_bytes))
         self.worker_client = worker_client or ProcessWorkerClient()
         self.root: Path | None = None
         if worktree_root:
@@ -80,6 +91,10 @@ class IsolatedLocalExecutorAdapter:
             worker_file_size_mb=settings.executor_worker_file_size_mb,
             container_runtime=settings.executor_container_runtime,
             container_image=settings.executor_container_image,
+            modify_max_files=settings.executor_modify_max_files,
+            modify_max_operations=settings.executor_modify_max_operations,
+            modify_max_total_write_bytes=settings.executor_modify_max_total_write_bytes,
+            modify_max_patch_bytes=settings.executor_modify_max_patch_bytes,
         )
 
     def execute(self, command: ExecutorCommand) -> ExecutorOutcome:
@@ -92,6 +107,8 @@ class IsolatedLocalExecutorAdapter:
             )
         if command.action == "read_repository":
             return self._read_repository(command)
+        if command.action == "modify_worktree":
+            return self._modify_worktree(command)
         return self._run_tests(command)
 
     def _ensure_available(self) -> None:
@@ -100,17 +117,29 @@ class IsolatedLocalExecutorAdapter:
         if self.root is None:
             raise ExecutorUnavailable("EXECUTOR_WORKTREE_ROOT is not configured")
         if not self.root.exists() or not self.root.is_dir():
-            raise ExecutorUnavailable("Configured executor worktree root does not exist or is not a directory")
+            raise ExecutorUnavailable(
+                "Configured executor worktree root does not exist or is not a directory"
+            )
 
     @staticmethod
-    def _validate_keys(payload: dict[str, Any], allowed: frozenset[str], action: str) -> None:
+    def _validate_keys(
+        payload: dict[str, Any],
+        allowed: frozenset[str],
+        action: str,
+    ) -> None:
         unknown = sorted(set(payload) - set(allowed))
         if unknown:
             raise ExecutorUnavailable(
                 f"Unsupported payload fields for {action}: {', '.join(unknown)}"
             )
 
-    def _resolve_relative(self, base: Path, raw_value: str, *, must_be_dir: bool | None = None) -> Path:
+    def _resolve_relative(
+        self,
+        base: Path,
+        raw_value: str,
+        *,
+        must_be_dir: bool | None = None,
+    ) -> Path:
         candidate = Path(str(raw_value or "").strip())
         if not str(candidate) or candidate.is_absolute():
             raise ExecutorUnavailable("Executor paths must be non-empty relative paths")
@@ -120,7 +149,9 @@ class IsolatedLocalExecutorAdapter:
             raise ExecutorUnavailable(f"Executor path does not exist: {candidate}") from exc
         base_resolved = base.resolve(strict=True)
         if resolved != base_resolved and base_resolved not in resolved.parents:
-            raise ExecutorUnavailable("Executor path escapes the configured worktree boundary")
+            raise ExecutorUnavailable(
+                "Executor path escapes the configured worktree boundary"
+            )
         if must_be_dir is True and not resolved.is_dir():
             raise ExecutorUnavailable("Executor worktree must be a directory")
         if must_be_dir is False and not resolved.is_file():
@@ -164,6 +195,7 @@ class IsolatedLocalExecutorAdapter:
         relative_worktree: str,
         payload: dict[str, Any],
         timeout: float,
+        backend: str | None = None,
     ) -> ExecutorOutcome:
         assert self.root is not None
         job = WorkerJob(
@@ -173,7 +205,7 @@ class IsolatedLocalExecutorAdapter:
             worktree=relative_worktree,
             payload=payload,
             limits=self._limits(timeout),
-            backend=self.worker_backend,
+            backend=backend or self.worker_backend,
             env_allowlist=self.env_allowlist,
             container_runtime=self.container_runtime,
             container_image=self.container_image,
@@ -210,6 +242,30 @@ class IsolatedLocalExecutorAdapter:
             )
             return ExecutorOutcome(True, result, None)
         return outcome
+
+    def _modify_worktree(self, command: ExecutorCommand) -> ExecutorOutcome:
+        payload = command.payload
+        self._validate_keys(payload, MODIFY_WORKTREE_KEYS, "modify_worktree")
+        _worktree, relative = self._worktree(payload)
+        operations = payload.get("operations")
+        if not isinstance(operations, list) or not operations:
+            raise ExecutorUnavailable("modify_worktree requires a non-empty operations list")
+        worker_payload = {
+            "operations": operations,
+            "policy": {
+                "max_files": self.modify_max_files,
+                "max_operations": self.modify_max_operations,
+                "max_total_write_bytes": self.modify_max_total_write_bytes,
+                "max_patch_bytes": self.modify_max_patch_bytes,
+            },
+        }
+        return self._dispatch(
+            command,
+            relative_worktree=relative,
+            payload=worker_payload,
+            timeout=min(self.timeout_seconds, self.max_timeout_seconds),
+            backend="subprocess-sandbox",
+        )
 
     def _run_tests(self, command: ExecutorCommand) -> ExecutorOutcome:
         payload = command.payload
