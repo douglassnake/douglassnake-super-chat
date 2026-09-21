@@ -289,9 +289,9 @@ def test_adapter_failure_is_persisted_redacted_and_not_replayed(
     created = client.post(
         f"/agent-executions/{execution['id']}/executor-requests",
         json={
-            "action": "create_commit",
+            "action": "read_repository",
             "adapter_type": "failing",
-            "payload": {"message": "test: controlled executor"},
+            "payload": {"scope": "metadata"},
         },
     )
     assert created.status_code == 201
