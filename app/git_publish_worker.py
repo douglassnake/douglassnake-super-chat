@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import tempfile
 from pathlib import Path
 
 from app.agent_handoff import sanitize_value
@@ -61,14 +62,16 @@ def _remote_path(raw: object) -> Path:
     return resolved
 
 
-def _mask_remote(value: object, remote: Path) -> object:
-    text = str(remote)
+def _mask_paths(value: object, paths: tuple[Path, ...]) -> object:
     if isinstance(value, str):
-        return value.replace(text, "[CONTROLLED_REMOTE]")
+        text = value
+        for path in paths:
+            text = text.replace(str(path), "[CONTROLLED_PATH]")
+        return text
     if isinstance(value, dict):
-        return {str(key): _mask_remote(item, remote) for key, item in value.items()}
+        return {str(key): _mask_paths(item, paths) for key, item in value.items()}
     if isinstance(value, list):
-        return [_mask_remote(item, remote) for item in value]
+        return [_mask_paths(item, paths) for item in value]
     return value
 
 
@@ -77,39 +80,40 @@ def _remote_git(
     cwd: Path,
     remote: Path,
     *args: str,
+    mask_paths: tuple[Path, ...] = (),
 ) -> WorkerResult:
     executable = shutil.which("git")
     if executable is None:
         return WorkerResult(False, {"status": "unavailable"}, "Git executable is unavailable")
     env = _git_env()
-    # Fail closed: even repository-local url.*.insteadOf cannot escape to network.
+    # Even if a repository-local url.*.insteadOf exists, file is the only allowed transport.
     env["GIT_ALLOW_PROTOCOL"] = "file"
+    # Avoid maintenance side effects while importing an object bundle.
+    env["GIT_CONFIG_COUNT"] = "4"
+    env["GIT_CONFIG_KEY_2"] = "gc.auto"
+    env["GIT_CONFIG_VALUE_2"] = "0"
+    env["GIT_CONFIG_KEY_3"] = "maintenance.auto"
+    env["GIT_CONFIG_VALUE_3"] = "false"
     outcome = _run_process(
         [executable, "-C", str(cwd), *args],
         cwd=cwd,
         env=env,
         limits=job.limits,
     )
-    result = _mask_remote(outcome.result, remote)
-    error = _mask_remote(outcome.error, remote) if outcome.error else None
+    paths = (remote, *mask_paths)
+    result = _mask_paths(outcome.result, paths)
+    error = _mask_paths(outcome.error, paths) if outcome.error else None
     return WorkerResult(outcome.ok, sanitize_value(result), str(error) if error else None)
 
 
-def _ls_remote_branch(job: WorkerJob, source: Path, remote: Path, branch_name: str) -> str | None:
+def _remote_ref(job: WorkerJob, remote: Path, branch_name: str) -> str | None:
     ref = f"refs/heads/{branch_name}"
-    outcome = _remote_git(job, source, remote, "ls-remote", "--heads", str(remote), ref)
-    if not outcome.ok:
-        raise ValueError(outcome.error or "Unable to inspect controlled remote branch")
-    raw = str(outcome.result.get("stdout") or "").strip()
-    if not raw:
+    outcome = _remote_git(job, remote, remote, "show-ref", "--verify", "--hash", ref)
+    if outcome.ok:
+        return _sha(str(outcome.result.get("stdout") or "").strip(), "remote branch SHA")
+    if int(outcome.result.get("exit_code") or 0) == 1:
         return None
-    lines = [line for line in raw.splitlines() if line.strip()]
-    if len(lines) != 1 or "\t" not in lines[0]:
-        raise ValueError("Controlled remote returned an ambiguous branch reference")
-    sha, observed_ref = lines[0].split("\t", 1)
-    if observed_ref != ref:
-        raise ValueError("Controlled remote returned an unexpected branch reference")
-    return _sha(sha, "remote branch SHA")
+    raise ValueError(outcome.error or "Unable to inspect controlled remote branch")
 
 
 def execute_publish_branch(job: WorkerJob) -> WorkerResult:
@@ -117,7 +121,7 @@ def execute_publish_branch(job: WorkerJob) -> WorkerResult:
         return WorkerResult(
             False,
             {"status": "unsupported", "backend": job.backend},
-            "publish_branch currently uses only the fixed-argv local-file Git backend",
+            "publish_branch currently supports only the local-bare Git backend",
         )
 
     _root, source, relative = _resolve_worktree(job)
@@ -196,7 +200,7 @@ def execute_publish_branch(job: WorkerJob) -> WorkerResult:
             "Controlled staging is not clean; publication aborted",
         )
 
-    existing = _ls_remote_branch(job, source, remote, branch_name)
+    existing = _remote_ref(job, remote, branch_name)
     if existing is not None:
         return WorkerResult(
             False,
@@ -210,31 +214,73 @@ def execute_publish_branch(job: WorkerJob) -> WorkerResult:
             "Controlled remote branch already exists; first publication will not overwrite it",
         )
 
+    # Local/bare publication deliberately avoids receive-pack. This prevents the
+    # receive hook family from ever entering the execution path.
+    with tempfile.TemporaryDirectory(prefix=f"superchat-publish-{job.request_id[:12]}-") as tmp:
+        bundle = Path(tmp) / "publication.bundle"
+        bundled = _git(job, source, "bundle", "create", str(bundle), f"refs/heads/{branch_name}")
+        if not bundled.ok:
+            return WorkerResult(False, bundled.result, bundled.error or "Unable to build publication bundle")
+
+        imported = _remote_git(
+            job,
+            remote,
+            remote,
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--no-recurse-submodules",
+            str(bundle),
+            f"refs/heads/{branch_name}",
+            mask_paths=(bundle,),
+        )
+        if not imported.ok:
+            return WorkerResult(
+                False,
+                {
+                    "status": "object_transfer_failed",
+                    "remote_id": remote_id,
+                    "branch_name": branch_name,
+                    "external_effects": False,
+                    "transport": imported.result,
+                },
+                imported.error or "Unable to import the controlled publication bundle",
+            )
+
+    object_check = _remote_git(job, remote, remote, "cat-file", "-e", f"{commit_sha}^{{commit}}")
+    remote_parent = _remote_git(job, remote, remote, "rev-parse", "--verify", f"{commit_sha}^")
+    if not object_check.ok or not remote_parent.ok:
+        return WorkerResult(
+            False,
+            {"status": "object_verify_failed", "remote_id": remote_id, "external_effects": False},
+            "Transferred remote objects could not be verified",
+        )
+    if str(remote_parent.result.get("stdout") or "").strip().lower() != base_sha:
+        return WorkerResult(
+            False,
+            {"status": "object_verify_failed", "remote_id": remote_id, "external_effects": False},
+            "Transferred commit parent differs from the reviewed base SHA",
+        )
+
     ref = f"refs/heads/{branch_name}"
-    pushed = _remote_git(
-        job,
-        source,
-        remote,
-        "push",
-        "--porcelain",
-        "--no-verify",
-        str(remote),
-        f"{commit_sha}:{ref}",
-    )
-    if not pushed.ok:
+    zero_oid = "0" * len(commit_sha)
+    created = _remote_git(job, remote, remote, "update-ref", ref, commit_sha, zero_oid)
+    if not created.ok:
+        observed = _remote_ref(job, remote, branch_name)
         return WorkerResult(
             False,
             {
-                "status": "push_failed",
+                "status": "conflict",
                 "remote_id": remote_id,
                 "branch_name": branch_name,
+                "observed_remote_sha": observed,
                 "external_effects": False,
-                "transport": pushed.result,
             },
-            pushed.error or "Controlled local-file push failed",
+            "Remote branch creation compare-and-swap failed; no overwrite was attempted",
         )
 
-    observed_remote = _ls_remote_branch(job, source, remote, branch_name)
+    observed_remote = _remote_ref(job, remote, branch_name)
     if observed_remote != commit_sha:
         return WorkerResult(
             False,
@@ -247,7 +293,7 @@ def execute_publish_branch(job: WorkerJob) -> WorkerResult:
                 "external_effects": True,
                 "manual_reconciliation_required": True,
             },
-            "Remote publication occurred but post-verification did not observe the expected commit",
+            "Remote ref was created but post-verification did not observe the expected commit",
         )
 
     return WorkerResult(
@@ -264,9 +310,12 @@ def execute_publish_branch(job: WorkerJob) -> WorkerResult:
                 "remote_sha": observed_remote,
                 "patch_digest": patch_digest,
                 "source_worktree": relative,
-                "push_performed": True,
+                "remote_publication_performed": True,
+                "push_performed": False,
+                "receive_pack_used": False,
                 "pull_request_created": False,
                 "force_used": False,
+                "transport": "local_bundle_fetch_update_ref_cas",
                 "network_policy": "local_filesystem_remote_only",
                 "credential_policy": "no_credentials_no_parent_secrets",
                 "external_effects": True,
