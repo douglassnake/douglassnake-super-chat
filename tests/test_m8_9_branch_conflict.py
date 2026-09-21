@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import app.executor_routes as executor_routes_module
 from tests.test_m8_9_reviewed_git_branch import (
     _prepare_repo,
+    git_stage_client,
     make_adapter,
     setup_execution,
 )
