@@ -24,28 +24,23 @@ Worker isolado
   ├── run_tests
   ├── modify_worktree → cópia temporária → diff
   ├── create_branch → ref local superchat/*
-  └── apply_git_change → staging Git dedicado, não commitado
+  ├── apply_git_change → staging Git dedicado
+  └── create_commit → commit local por Git plumbing
   ↓
 Proveniência + auditoria
 ```
 
-Cada efeito exige autorização própria. Aprovar um `patch_digest` não cria branch; criar branch não aplica o patch; aplicar o patch não cria commit, push ou PR.
+Cada efeito exige autorização própria. Aprovar um digest não cria branch; criar branch não aplica o patch; aplicar o patch não cria commit; criar commit não faz push nem cria PR.
 
 ## Marcos
 
-M1–M7 constroem memória, contexto, integrações e métricas. M8 adiciona automação progressivamente controlada:
+M1–M7 constroem memória, contexto, integrações e métricas. M8 adiciona autonomia de forma incremental:
 
-- **M8.0** Agent Task Packs;
-- **M8.1** handoffs auditáveis;
-- **M8.2** execution tracking e evidências;
-- **M8.3** verificação GitHub somente leitura;
-- **M8.4** Controlled Executor;
-- **M8.5** adapter local isolado;
-- **M8.6** worker endurecido separado da API;
-- **M8.7** proveniência, lease/heartbeat, reconciliação e retry;
+- **M8.0–M8.7** task packs, handoffs, tracking, verificação, executor, isolamento e proveniência;
 - **M8.8** alteração efêmera + diff revisável;
 - **M8.9** aprovação por digest + branch Git local dedicado;
-- **M8.10** aplicação da proposta aprovada em worktree Git dedicado.
+- **M8.10** aplicação da proposta aprovada em worktree Git dedicado;
+- **M8.11** commit Git local explícito do staging aprovado.
 
 ## Capacidades reais atuais
 
@@ -55,53 +50,60 @@ run_tests         → somente preset server-side pytest
 modify_worktree   → cópia temporária + unified diff
 create_branch     → somente branch local superchat/*
 apply_git_change  → staging persistente, não commitado
+create_commit     → commit local verificado, sem push
 ```
 
 Ainda sem implementação real:
 
 ```text
-create_commit
 create_pull_request
+push remoto
 ```
 
 Continuam proibidos: merge, deploy, publicação, escrita em Drive/Calendar, escrita externa genérica e shell/comando/binário/argv arbitrário.
 
-## M8.8 — proposta revisável
+## Fluxo Git controlado
 
-`modify_worktree` aceita apenas `write_text` e `delete_file`. As mudanças ocorrem em cópia temporária e geram inventário + unified diff + `patch_digest` SHA-256. O worktree original não é alterado.
-
-Veja `docs/WORKTREE_DIFF.md`.
-
-## M8.9 — aprovação e branch
-
-Uma proposta pode originar `GitChangeApproval`; o usuário precisa confirmar exatamente o `patch_digest`. A aprovação não escreve Git.
-
-`create_branch` é uma ação separada, limitada a `superchat/*`, criada do `HEAD` local sem checkout, commit, push ou rede. Branch existente nunca é sobrescrito.
-
-Veja `docs/GIT_CHANGE_APPROVAL.md`.
-
-## M8.10 — aplicação aprovada
-
-O payload público de `apply_git_change` contém somente:
-
-```json
-{
-  "approval_id": "...",
-  "branch_request_id": "..."
-}
+```text
+modify_worktree
+   ↓ diff + patch_digest
+aprovação humana do digest
+   ↓
+create_branch
+   ↓
+apply_git_change
+   ↓ staging não commitado
+create_commit
+   ↓
+commit local superchat/*
 ```
 
-A API resolve server-side as operações originais, digest aprovado, branch, worktree e `base_sha`. O worker exige que o branch ainda aponte para essa base, cria um worktree dedicado em `EXECUTOR_GIT_STAGING_ROOT`, reconstrói a proposta e compara o digest antes da escrita.
+### M8.11 — commit explícito
 
-Depois da aplicação, o diff é recalculado e precisa reproduzir o mesmo `patch_digest`. Em qualquer divergência o staging é removido. Em sucesso, os arquivos ficam alterados **sem commit**, o branch continua no mesmo `HEAD` e o worktree fonte não recebe alteração de conteúdo.
+O payload público de `create_commit` contém somente `apply_request_id` e uma mensagem curta. Branch, staging, `base_sha`, `patch_digest`, inventário e identidade são resolvidos ou injetados pelo servidor.
 
-Veja `docs/APPLY_APPROVED_CHANGE.md`.
+Antes do commit, o worker exige que branch/staging permaneçam na base aprovada, que o conjunto de arquivos alterados seja exatamente o inventário aprovado e que o digest atual continue idêntico. Arquivos extras, alterações pré-staged, symlinks e drift bloqueiam a operação.
+
+O commit usa Git plumbing com índice temporário:
+
+```text
+read-tree → hash-object --no-filters → update-index → write-tree
+→ commit-tree → update-ref compare-and-swap → read-tree
+```
+
+Não há `git add -A` nem `git commit`. Hooks são desabilitados; clean filters não são usados. O teste de segurança instala hook e filtro maliciosos e confirma que nenhum deles executa.
+
+A identidade padrão é server-side:
+
+```text
+Super Chat Executor <superchat-executor@localhost>
+```
+
+Veja `docs/EXPLICIT_COMMIT.md`.
 
 ## Worker e proveniência
 
 O worker roda em processo separado da API. Cada execução `isolated-local` possui `WorkerAttempt` numerado com lease/heartbeat. A API valida `job_digest` e `result_digest` SHA-256 antes de aceitar o resultado. Isso é integridade/proveniência, não assinatura criptográfica.
-
-`run_tests` usa cópia temporária, ambiente mínimo, timeout e limites de CPU/memória/PIDs/NOFILE/FSIZE quando suportados. O contrato container inclui `--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges` e nunca monta Docker socket.
 
 ## Recuperação e tokens
 
@@ -113,14 +115,14 @@ python scripts/context_benchmark.py benchmarks/context_cases.json
 
 ## Privacidade
 
-O repositório é público. Memória real, `.env`, credenciais, conversas, dumps do banco e documentos privados não devem ser versionados. `EXECUTOR_GIT_STAGING_ROOT` deve apontar para diretório privado no servidor.
+O repositório é público. Memória real, `.env`, credenciais, conversas, dumps do banco e documentos privados não devem ser versionados. Worktrees e staging devem permanecer em diretórios privados do servidor.
 
 ## Executar
 
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-10-apply-approved-change
+git checkout codex/m8-11-explicit-commit
 cp .env.example .env
 docker compose up --build
 ```
@@ -129,8 +131,8 @@ Interface: `http://localhost:8000/app/`
 
 OpenAPI: `http://localhost:8000/docs`
 
-O executor real permanece desligado até configuração explícita de `EXECUTOR_ISOLATED_ENABLED=true`, `EXECUTOR_WORKTREE_ROOT` e, para aplicação Git, `EXECUTOR_GIT_STAGING_ROOT`.
+O executor real permanece desligado até configuração explícita dos roots privados e das capacidades desejadas.
 
 ## Próxima fronteira
 
-O próximo marco deverá implementar `create_commit` **somente** sobre um staging M8.10 válido, com autorização independente, identidade Git server-side, verificação de `HEAD`, `patch_digest` e status do worktree. Push/PR, merge e deploy continuam separados ou fora da política.
+A próxima etapa deverá separar **publicação remota do branch** e **criação de pull request** em autorizações independentes. Merge, deploy e publicação em produção permanecem fora da política padrão.
