@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # separado do worktree fonte e administrado pelo servidor.
     executor_git_staging_root: str | None = None
 
+    # M8.11: identidade exclusiva para commits locais criados pelo executor.
+    # Nunca é aceita do payload do agente/cliente.
+    executor_git_author_name: str = "Super Chat Executor"
+    executor_git_author_email: str = "superchat-executor@localhost"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
