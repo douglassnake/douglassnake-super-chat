@@ -323,9 +323,6 @@ class GitHubBranchPublishExecutorAdapter:
             raise ExecutorUnavailable(str(exc)) from exc
 
         staging_branch = f"superchat-staging/{command.request_id}"
-        staged = False
-        final_created = False
-        cleanup_ok = True
         try:
             existing = publisher.get_branch_head(repository, branch)
             if existing is not None:
@@ -346,7 +343,18 @@ class GitHubBranchPublishExecutorAdapter:
                     {"status": "staging_ref_collision", "repository": repository, "external_effects": False},
                     "Unique GitHub staging ref already exists",
                 )
+        except GitHubPublishError as exc:
+            return ExecutorOutcome(
+                False,
+                {"status": "github_precheck_failed", "repository": repository, "external_effects": False},
+                str(exc),
+            )
 
+        staged = False
+        final_created = False
+        cleanup_ok = True
+        failure: ExecutorOutcome | None = None
+        try:
             publisher.stage_exact_commit(
                 self.source_bare,
                 repository,
@@ -362,7 +370,7 @@ class GitHubBranchPublishExecutorAdapter:
             final_created = True
             observed_final = publisher.get_branch_head(repository, branch)
             if observed_final != head_sha:
-                return ExecutorOutcome(
+                failure = ExecutorOutcome(
                     False,
                     {
                         "status": "post_verify_failed",
@@ -376,7 +384,7 @@ class GitHubBranchPublishExecutorAdapter:
                     "GitHub branch was created but post-verification did not match the reviewed SHA",
                 )
         except GitHubPublishError as exc:
-            return ExecutorOutcome(
+            failure = ExecutorOutcome(
                 False,
                 sanitize_value(
                     {
@@ -407,10 +415,13 @@ class GitHubBranchPublishExecutorAdapter:
                     "head_sha": head_sha,
                     "external_effects": True,
                     "final_branch_created": final_created,
+                    "prior_status": (failure.result or {}).get("status") if failure else None,
                     "manual_reconciliation_required": True,
                 },
-                "Final GitHub branch state may be correct, but temporary ref cleanup failed",
+                "GitHub temporary ref cleanup failed; manual reconciliation is required",
             )
+        if failure is not None:
+            return failure
 
         return ExecutorOutcome(
             True,
