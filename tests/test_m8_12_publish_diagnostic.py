@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -26,4 +28,5 @@ def test_publish_branch_diagnostic_envelope(
     executed = apply_client.post(f"/executor-requests/{request_id}/execute")
     assert executed.status_code == 200
     body = executed.json()
+    print("M8_12_DIAGNOSTIC=" + json.dumps(body, ensure_ascii=False, sort_keys=True, default=str))
     assert body["status"] == "completed", body
