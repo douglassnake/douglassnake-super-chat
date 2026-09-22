@@ -82,6 +82,11 @@ def resolve_executor_adapter(adapter_type: str) -> ExecutorAdapter:
         from app.github_pr_executor import GitHubPullRequestExecutorAdapter
 
         return GitHubPullRequestExecutorAdapter.from_settings(get_settings())
+    if adapter_type == "github-publish":
+        from app.core.config import get_settings
+        from app.github_publish_executor import GitHubBranchPublishExecutorAdapter
+
+        return GitHubBranchPublishExecutorAdapter.from_settings(get_settings())
     raise ExecutorUnavailable(f"Executor adapter {adapter_type!r} is not configured")
 
 
