@@ -108,12 +108,16 @@ def _remote_git(
 
 def _remote_ref(job: WorkerJob, remote: Path, branch_name: str) -> str | None:
     ref = f"refs/heads/{branch_name}"
-    outcome = _remote_git(job, remote, remote, "show-ref", "--verify", "--hash", ref)
+    # `show-ref --verify --hash` exits 128 for a missing ref in an otherwise
+    # valid empty bare repository. `rev-parse --verify --quiet` gives the
+    # contract we need here: 0=present, 1=absent, other=real failure.
+    outcome = _remote_git(job, remote, remote, "rev-parse", "--verify", "--quiet", ref)
     if outcome.ok:
         return _sha(str(outcome.result.get("stdout") or "").strip(), "remote branch SHA")
     if int(outcome.result.get("exit_code") or 0) == 1:
         return None
-    raise ValueError(outcome.error or "Unable to inspect controlled remote branch")
+    detail = str(outcome.result.get("stderr") or "").strip()
+    raise ValueError(detail or outcome.error or "Unable to inspect controlled remote branch")
 
 
 def execute_publish_branch(job: WorkerJob) -> WorkerResult:
