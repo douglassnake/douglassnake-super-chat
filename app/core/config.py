@@ -52,13 +52,18 @@ class Settings(BaseSettings):
     executor_git_publish_remote: str | None = None
     executor_git_publish_remote_id: str = "controlled-bare"
 
-    # M8.13: escrita GitHub separada do worker. DESLIGADA por padrão.
-    # O token de escrita nunca entra em ExecutorRequest/WorkerJob/log/result.
+    # M8.13: escrita GitHub para PR, separada do worker. DESLIGADA por padrão.
     executor_github_write_enabled: bool = False
     executor_github_write_token: str | None = None
     executor_github_write_repository: str | None = None
     executor_github_pr_base_branch: str = "main"
     executor_github_pr_draft: bool = True
+
+    # M8.14: publicação autenticada de branch GitHub via credential broker.
+    # Mantém token separado do writer de PR para menor privilégio operacional.
+    executor_github_publish_enabled: bool = False
+    executor_github_publish_token: str | None = None
+    executor_github_publish_repository: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
