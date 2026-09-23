@@ -1,20 +1,27 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "Super Chat API"
     environment: str = "development"
-    database_url: str = "postgresql+psycopg://superchat:superchat@localhost:5432/superchat"
+    database_url: str = Field(
+        default="postgresql+psycopg://superchat:superchat@localhost:5432/superchat",
+        exclude=True,
+        repr=False,
+    )
 
-    github_token: str | None = None
+    # Credencial GitHub somente leitura. Continua acessível em memória, mas não
+    # participa de model_dump/model_dump_json/repr de Settings.
+    github_token: str | None = Field(default=None, exclude=True, repr=False)
     github_api_url: str = "https://api.github.com"
 
-    google_access_token: str | None = None
+    google_access_token: str | None = Field(default=None, exclude=True, repr=False)
     google_client_id: str | None = None
-    google_client_secret: str | None = None
-    google_refresh_token: str | None = None
+    google_client_secret: str | None = Field(default=None, exclude=True, repr=False)
+    google_refresh_token: str | None = Field(default=None, exclude=True, repr=False)
     google_oauth_token_url: str = "https://oauth2.googleapis.com/token"
     google_drive_api_url: str = "https://www.googleapis.com/drive/v3"
     google_calendar_api_url: str = "https://www.googleapis.com/calendar/v3"
@@ -54,7 +61,7 @@ class Settings(BaseSettings):
 
     # M8.13: escrita GitHub para PR, separada do worker. DESLIGADA por padrão.
     executor_github_write_enabled: bool = False
-    executor_github_write_token: str | None = None
+    executor_github_write_token: str | None = Field(default=None, exclude=True, repr=False)
     executor_github_write_repository: str | None = None
     executor_github_pr_base_branch: str = "main"
     executor_github_pr_draft: bool = True
@@ -62,7 +69,7 @@ class Settings(BaseSettings):
     # M8.14: publicação autenticada de branch GitHub via credential broker.
     # Mantém token separado do writer de PR para menor privilégio operacional.
     executor_github_publish_enabled: bool = False
-    executor_github_publish_token: str | None = None
+    executor_github_publish_token: str | None = Field(default=None, exclude=True, repr=False)
     executor_github_publish_repository: str | None = None
 
     model_config = SettingsConfigDict(
