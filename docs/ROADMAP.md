@@ -38,83 +38,60 @@ Drive/Calendar somente leitura, metadados persistidos sem copiar documentos comp
 ### M7.0 — benchmark de contexto
 Status: **concluído na branch `codex/m7-retrieval-benchmark`**.
 
-Entregas:
-- `precision@k`, `recall@k` e cobertura;
-- eficiência/compressão de tokens;
-- latência;
-- endpoint de avaliação;
-- dataset sintético;
-- runner CLI e CI.
-
 Baseline sintético v1: cenário de pressão `minimal` com 13.926 tokens candidatos → 1.794 selecionados, compressão 0,871176 e recall@2 de 1,0 no fixture.
 
 ### M7.1 — busca híbrida/semântica
 Status: **condicional — não iniciado**.
 
-Embeddings/pgvector somente se benchmark privado com consultas reais demonstrar ganho mensurável que compense custo, latência e complexidade.
+Embeddings/pgvector somente se benchmark privado com consultas reais demonstrar ganho mensurável.
 
 ## M8 — Automação e agentes
 
 ### M8.0 — Agent Task Packs
 Status: **concluído na branch `codex/m8-agent-task-packs`**.
 
-`AgentTaskPack` persistente, objetivo, critérios de aceite explícitos, guardrails, contexto, fontes, budget, fingerprint, preview, aprovação humana, testes e documentação.
-
 ### M8.1 — handoff assistido e auditável
 Status: **concluído na branch `codex/m8-1-agent-handoffs`**.
-
-`AgentHandoff` persistente, allowlist explícita, fingerprint congelado, release separado, resultado/falha estruturados, Markdown auditável, testes e documentação.
 
 ### M8.2 — acompanhamento de execução e evidências
 Status: **concluído na branch `codex/m8-2-execution-tracking`**.
 
-`AgentExecution`, eventos append-only, progresso, referências técnicas, evidência por critério e gate de conclusão.
-
 ### M8.3 — verificação externa GitHub somente leitura
 Status: **concluído na branch `codex/m8-3-github-verification`**.
-
-Commit, PR e check-runs somente leitura, proveniência, estados normalizados, `external_verification` e regra explícita `checks_green`.
 
 ### M8.4 — executor controlado
 Status: **concluído na branch `codex/m8-4-controlled-executor`**.
 
-`ExecutorRequest`, migration `0006_executor_requests`, política global + allowlist de handoff, release específico, adapter interface, anti-replay, redaction, eventos append-only e rejeição de shell/comando arbitrário.
-
-Ações reconhecidas pela política:
-- `read_context`;
-- `read_repository`;
-- `modify_worktree`;
-- `run_tests`;
-- `create_branch`;
-- `create_commit`;
-- `create_pull_request`.
-
 ### M8.5 — adapter local isolado
 Status: **concluído na branch `codex/m8-5-isolated-adapter`**.
 
-Entregas:
-- adapter opcional `isolated-local`, desabilitado por padrão;
-- root de worktrees configurável e obrigatório;
-- resolução canônica de paths;
-- bloqueio de path traversal e symlink escape;
-- primeiro contrato real `read_repository` limitado a `scope=metadata`;
-- primeiro contrato real `run_tests` limitado ao preset server-side `pytest`;
-- cliente não escolhe executável, argv ou flags arbitrárias;
-- subprocesso com `shell=False` e `stdin=DEVNULL`;
-- `cwd` restrito ao worktree validado;
-- ambiente mínimo com allowlist e filtro adicional de nomes sensíveis;
-- timeout limitado por máximo global;
-- encerramento do grupo de processos em timeout quando suportado;
-- captura de stdout/stderr em arquivo temporário;
-- limite do volume persistido por stream;
-- redaction de saída antes da persistência;
-- ações sem contrato real retornam `unsupported` sem efeito externo;
-- testes reais de pytest em diretório temporário;
-- teste de timeout, traversal, symlink escape, ambiente mínimo, truncamento e integração via API;
-- documentação `docs/ISOLATED_EXECUTOR.md`.
+Capacidades reais: `read_repository` somente metadata e `run_tests` somente preset server-side `pytest`.
 
-Ações que continuam **sem implementação real** no adapter `isolated-local`:
-- `read_context`;
+### M8.6 — hardening do worker
+Status: **concluído na branch `codex/m8-6-worker-hardening`**.
+
+Entregas:
+- `WorkerJob` JSON versionado (`schema_version=1`);
+- `ProcessWorkerClient` separando a execução técnica do processo da API;
+- `worker_entry` com fronteira de erro estruturada;
+- backend `subprocess-sandbox` compatível com CI;
+- backend `container` opcional;
+- cópia temporária do worktree por request para `run_tests`;
+- validação de symlinks antes da cópia;
+- limpeza automática do workspace temporário;
+- ambiente mínimo e sem secrets do processo pai;
+- timeout interno + deadline externo do worker;
+- limites POSIX quando suportados: CPU, memória, PIDs, NOFILE e FSIZE;
+- stdout/stderr limitados e redigidos;
+- resultado com backend, motivo de terminação, limites efetivos e não suportados;
+- backend subprocess registra explicitamente ausência de isolamento de rede;
+- contrato de container com `--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges`, limites de PIDs/memória/CPU e tmpfs restrito;
+- Docker socket nunca é montado;
+- ações de escrita continuam `unsupported`;
+- testes de processo separado, workspace efêmero, não herança de secrets, symlink escape e política de container;
+- documentação `docs/WORKER_HARDENING.md`.
+
+Continuam sem implementação real:
 - `modify_worktree`;
 - `create_branch`;
 - `create_commit`;
@@ -128,35 +105,33 @@ Continuam proibidos por padrão:
 - escrita genérica em serviços externos;
 - shell/comando/binário/argv arbitrário.
 
-### M8.6 — hardening do worker
+### M8.7 — proveniência e reconciliação do worker
 Status: **futuro/condicional**.
 
-Antes de ampliar as ações reais, endurecer o ambiente com:
-- worker/processo dedicado separado da API;
-- isolamento por container ou mecanismo equivalente;
-- cgroups/limites fortes de CPU, memória, PIDs e filesystem quando disponíveis;
-- quota de disco/artefatos;
-- política de rede (idealmente sem egress por padrão);
-- identidade de execução não privilegiada;
-- lifecycle e limpeza de worktrees temporários;
-- observabilidade e auditoria do worker;
-- testes de escape/abuso;
-- nenhum secret no ambiente padrão.
+Antes de escrita real em código/Git, adicionar:
+- imagem de worker pinada por digest;
+- identidade/proveniência do executor;
+- assinatura ou attestation do resultado;
+- fila persistente/broker ou protocolo equivalente;
+- lease/heartbeat de jobs;
+- reconciliação de jobs órfãos;
+- política de egress testável;
+- quota de disco/IO quando suportada;
+- inventário e retenção de artefatos;
+- política de limpeza/retry idempotente.
 
-Somente depois do hardening considerar contratos reais separados para `modify_worktree`, `create_branch`, `create_commit` e `create_pull_request`.
-
-Antes do M8.6 permanece recomendada a calibração privada do M7.0 com consultas reais para decidir M7.1 com dados.
+Somente depois considerar contratos reais separados para `modify_worktree`, `create_branch`, `create_commit` e `create_pull_request`.
 
 ## Regra de evolução
 
-Não adicionar complexidade de IA ou autonomia antes de existir:
+Não ampliar autonomia antes de existir:
 1. fonte de verdade;
 2. modelo de dados;
 3. rastreabilidade;
-4. teste de recuperação;
-5. métrica de contexto;
-6. autorização humana explícita para efeitos externos;
-7. evidência verificável antes de marcar execução como concluída;
-8. política específica para cada nova capacidade de escrita;
-9. isolamento e limites de recurso antes de executar código real;
-10. hardening do worker antes de ampliar efeitos externos reais.
+4. métrica de contexto;
+5. autorização humana explícita;
+6. evidência verificável;
+7. política específica por efeito;
+8. isolamento e limites de recurso;
+9. worker separado e auditável;
+10. proveniência/reconciliação antes de escrita Git real.

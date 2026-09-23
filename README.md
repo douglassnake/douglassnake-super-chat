@@ -9,40 +9,27 @@ Usuário
   ↓
 Web / API
   ↓
-Projeto
-  ├── memória operacional (PostgreSQL)
-  ├── Session Memory
-  ├── GitHub (leitura)
-  ├── Google Drive (leitura sob demanda)
-  └── Google Calendar (leitura)
-        ↓
+Projeto + memória operacional
+  ↓
 Context Engine
-  ├── minimal   1.800 tokens
-  ├── standard  5.000 tokens
-  └── deep     15.000 tokens
-        ↓
+  ↓
 Agent Task Pack
-pending → aprovação humana → approved
-        ↓
+  ↓ aprovação humana
 Agent Handoff
-prepared → release explícito → released
-        ↓
+  ↓ release explícito
 Agent Execution
-running
-  ├── progresso
-  ├── referências técnicas
-  ├── evidências por critério
-  ├── verificação GitHub somente leitura
-  └── log append-only
-        ↓
+  ↓
 Controlled Executor
-ExecutorRequest prepared
-        ↓ release explícito
-released
-        ↓ adapter
-manual (inerte) | isolated-local (M8.5)
-        ↓
-running → completed | failed
+  ↓ release por ação
+Isolated Local Adapter
+  ↓
+WorkerJob JSON v1
+  ↓
+ProcessWorkerClient
+  ↓ processo separado da API
+Worker Runtime
+  ├── subprocess-sandbox
+  └── container opcional
 ```
 
 A autorização é separada por camada:
@@ -51,12 +38,13 @@ A autorização é separada por camada:
 Task Pack approved       = pronto para handoff
 Handoff released         = ações listadas explicitamente foram liberadas
 ExecutorRequest released = uma ação específica foi liberada para um adapter
+Worker job               = execução técnica da ação já autorizada
 Execution completed      = critérios de aceite possuem evidência explícita passed
 ```
 
 Nenhuma dessas etapas autoriza implicitamente merge, deploy, publicação ou escrita em serviços externos.
 
-## Marcos M1–M8.5
+## Marcos M1–M8.6
 
 - **M1 — Memória operacional:** projetos, decisões, tarefas, resumos, PostgreSQL, Alembic e Docker.
 - **M2 — Context Engine:** ranking, deduplicação, compactação, orçamento de tokens e `continue`.
@@ -71,12 +59,11 @@ Nenhuma dessas etapas autoriza implicitamente merge, deploy, publicação ou esc
 - **M8.3 — GitHub Verification:** commit/PR/check-runs verificados por leitura e evidência de CI somente por regra explícita.
 - **M8.4 — Controlled Executor:** request de ação, release específico, política global, anti-replay e adapter injetável.
 - **M8.5 — Isolated Local Adapter:** execução real limitada de `run_tests` e leitura de metadados dentro de worktree restrito.
+- **M8.6 — Worker Hardening:** processo de worker separado da API, workspace efêmero, limites de recurso auditáveis e backend de container com rede negada por padrão.
 
-## Agent Task Packs e Handoffs
+## Política de ações
 
-Um `AgentTaskPack` aprovado está pronto para originar handoff, mas não autoriza execução. Um handoff só libera as ações listadas explicitamente.
-
-Ações reconhecidas pela política atual:
+Ações reconhecidas pelo sistema:
 
 ```text
 read_context
@@ -88,51 +75,29 @@ create_commit
 create_pull_request
 ```
 
-Merge, deploy, publicação e escrita em serviços externos nunca são implicitamente autorizados.
-
-Veja `docs/AGENT_TASK_PACKS.md` e `docs/AGENT_HANDOFFS.md`.
-
-## Agent Executions e verificação
-
-Uma execução rastreada só nasce de handoff `released`. Progresso, referências técnicas, verificações e evidências são registrados em `AgentExecutionEvent` append-only.
-
-A conclusão é bloqueada enquanto qualquer critério estiver `pending` ou `failed`.
-
-O M8.3 verifica commit, PR e check-runs em modo somente leitura. `verified` confirma identidade/proveniência; não significa automaticamente que um critério passou.
-
-Veja `docs/AGENT_EXECUTIONS.md` e `docs/GITHUB_VERIFICATION.md`.
-
-## Controlled Executor
-
-O M8.4 introduz `ExecutorRequest`:
+Capacidades **reais** atualmente implementadas:
 
 ```text
-prepared
-   ├── cancel → cancelled
-   └── release → released
-                    └── execute → running
-                                     ├── completed
-                                     └── failed
+read_repository → somente metadata
+run_tests       → somente preset server-side pytest
 ```
 
-A ação precisa pertencer à política global, estar na allowlist do handoff e apontar para uma execução `running`.
-
-O executor rejeita payloads com shell/comando arbitrário, incluindo chaves como `command`, `cmd`, `shell`, `script`, `argv` e `executable`.
-
-O adapter `manual` permanece inerte.
-
-Veja `docs/CONTROLLED_EXECUTOR.md`.
-
-## Isolated Local Adapter — M8.5
-
-O adapter `isolated-local` é **desabilitado por padrão** e só fica disponível quando um root privado de worktrees é configurado.
-
-Capacidades reais atuais:
+Ainda sem efeito real:
 
 ```text
-read_repository   → apenas scope=metadata
-run_tests         → apenas preset server-side pytest
+modify_worktree
+create_branch
+create_commit
+create_pull_request
 ```
+
+Continuam proibidos por padrão: merge, deploy, publicação, escrita em Drive/Calendar, escrita genérica em serviços externos e shell/comando arbitrário.
+
+## Controlled Executor e adapter isolado
+
+Um `ExecutorRequest` precisa estar na política global, na allowlist do handoff e vinculado a uma execução `running`. Depois ainda exige release explícito.
+
+O adapter `manual` permanece inerte. O adapter `isolated-local` é **desabilitado por padrão** e só fica disponível com root privado de worktrees configurado.
 
 `run_tests` é montado internamente como:
 
@@ -142,22 +107,52 @@ run_tests         → apenas preset server-side pytest
 
 O cliente não escolhe binário, argv ou flags arbitrárias.
 
-Proteções do M8.5:
+Veja `docs/CONTROLLED_EXECUTOR.md` e `docs/ISOLATED_EXECUTOR.md`.
 
-- caminhos relativos e resolução canônica;
-- bloqueio de `..` e symlink escape;
-- `cwd` sempre dentro do root permitido;
-- `shell=False`;
-- `stdin=DEVNULL`;
-- ambiente mínimo com allowlist de variáveis não sensíveis;
-- timeout com encerramento de processo/grupo quando suportado;
-- limite do volume persistido de stdout/stderr;
-- redaction antes da persistência;
-- ações sem contrato retornam `unsupported` sem efeito externo.
+## Worker Hardening — M8.6
 
-As ações `modify_worktree`, `create_branch`, `create_commit` e `create_pull_request` **ainda não possuem implementação real** nesse adapter.
+O M8.6 move a execução técnica para um **processo de worker separado da API**. A comunicação usa `WorkerJob` JSON versionado; o worker recebe ambiente mínimo e não herda secrets por padrão.
 
-Veja `docs/ISOLATED_EXECUTOR.md`.
+Para `run_tests`, o worker:
+
+1. valida root/worktree por path canônico;
+2. rejeita symlink que escape do worktree;
+3. cria cópia temporária por request;
+4. executa o preset apenas nessa cópia;
+5. aplica timeout e limites suportados;
+6. trunca/redige stdout e stderr;
+7. remove o workspace temporário ao final.
+
+### Backend `subprocess-sandbox`
+
+Aplica, em POSIX quando disponível:
+
+- CPU (`RLIMIT_CPU`);
+- memória (`RLIMIT_AS`);
+- PIDs (`RLIMIT_NPROC`);
+- arquivos abertos (`RLIMIT_NOFILE`);
+- tamanho de arquivo (`RLIMIT_FSIZE`).
+
+Ele **não isola rede**; isso aparece explicitamente no resultado como `network_policy=not_isolated_by_subprocess_backend`.
+
+### Backend `container`
+
+Opcional e administrado pelo servidor. O contrato monta o runtime com:
+
+```text
+--network none
+--read-only
+--cap-drop ALL
+--security-opt no-new-privileges
+--pids-limit ...
+--memory ...
+--cpus 1.0
+--tmpfs /tmp:rw,noexec,nosuid
+```
+
+Somente a cópia temporária do worktree é montada em `/workspace`. O Docker socket nunca é montado.
+
+Veja `docs/WORKER_HARDENING.md`.
 
 ## Recuperação e economia de tokens
 
@@ -178,18 +173,16 @@ python scripts/context_benchmark.py benchmarks/context_cases.json
 
 A busca semântica/pgvector do M7.1 continua condicionada a benchmark privado com consultas reais.
 
-## Redaction e privacidade
+## Privacidade
 
-O repositório é público. Memória real, `.env`, credenciais, conversas, dumps do banco e documentos privados não devem ser versionados.
-
-Payloads estruturados e saídas do executor passam por redaction antes da persistência.
+O repositório é público. Memória real, `.env`, credenciais, conversas, dumps do banco e documentos privados não devem ser versionados. Payloads estruturados e saídas do executor passam por redaction antes da persistência.
 
 ## Executar
 
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-5-isolated-adapter
+git checkout codex/m8-6-worker-hardening
 cp .env.example .env
 docker compose up --build
 ```
@@ -198,10 +191,8 @@ Interface: `http://localhost:8000/app/`
 
 OpenAPI: `http://localhost:8000/docs`
 
-O adapter `isolated-local` continua desligado até configuração explícita de `EXECUTOR_ISOLATED_ENABLED=true` e `EXECUTOR_WORKTREE_ROOT`.
+O executor real continua desligado até configuração explícita de `EXECUTOR_ISOLATED_ENABLED=true` e `EXECUTOR_WORKTREE_ROOT`.
 
-## Próxima etapa
+## Próxima fronteira
 
-O passo seguinte deve endurecer a execução antes de adicionar novas escritas: isolamento por container/cgroup ou worker dedicado, limites fortes de CPU/memória/processos e política de artefatos. Só depois faz sentido considerar contratos reais para modificar worktree, criar branch, commit ou PR.
-
-Merge, deploy e publicação continuam fora da política padrão.
+Antes de escrita real em código/Git, ainda faltam contratos específicos e auditáveis para `modify_worktree`, `create_branch`, `create_commit` e `create_pull_request`, além de proveniência forte do worker e reconciliação de jobs órfãos. Merge, deploy e publicação continuam fora da política padrão.
