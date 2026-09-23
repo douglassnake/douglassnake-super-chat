@@ -29,48 +29,63 @@ Status: **concluído**.
 Dashboard responsivo, Health Score explicável, projetos, tarefas, fontes, eventos, painel de tokens, `continuar`, SessionDelta visual e sync GitHub.
 
 ## M6 — Google Drive e Calendar
-Status: **concluído na branch `codex/m6-google-context`**.
+Status: **concluído**.
 
-Entregas:
 - fontes `google_drive` e `google_calendar`;
 - OAuth somente por ambiente;
 - Drive somente leitura;
 - metadados persistidos sem copiar documentos completos;
-- texto de Google Docs/textos recuperado sob demanda;
+- Google Docs/textos recuperados sob demanda;
 - seleção lexical de janelas relevantes;
 - trechos Drive disputando o orçamento normal do Context Engine;
 - Calendar normalizado para `events`;
-- sync de Calendar idempotente com create/update/skip;
+- sync idempotente com create/update/skip;
 - degradação segura quando OAuth Drive não está disponível;
-- testes com Google simulado e sem credenciais reais.
+- testes sem credenciais reais.
 
-## M7 — Avaliação de recuperação + busca semântica
-Status: **próximo marco**.
-
-Antes de ativar embeddings, medir a recuperação atual.
+## M7 — Qualidade de recuperação
 
 ### M7.0 — benchmark de contexto
-- conjunto de consultas de referência por projeto fictício;
-- `expected_source_refs` / itens esperados;
-- precision@k e recall@k;
-- taxa de cobertura da resposta;
-- tokens candidatos x selecionados;
-- eficiência de contexto;
-- latência;
-- comparação entre perfis.
+Status: **concluído na branch `codex/m7-retrieval-benchmark`**.
 
-### M7.1 — busca híbrida, somente se justificada
-Possíveis entregas:
+Entregas:
+- `precision@k` e `recall@k`;
+- cobertura de fontes esperadas;
+- eficiência e compressão de tokens;
+- latência;
+- endpoint `POST /evaluation/context`;
+- dataset sintético versionável;
+- runner CLI;
+- execução automática no CI;
+- cenário de pressão de tokens;
+- documentação de interpretação.
+
+Baseline sintético v1:
+- 4 casos;
+- recall e coverage de 1,0 nos fixtures;
+- cenário `Token pressure minimal`: 13.926 tokens candidatos → 1.794 selecionados, compressão de 0,871176, preservando recall@2 de 1,0.
+
+Esses números validam o mecanismo e o orçamento, mas não são evidência de desempenho em dados reais.
+
+### M7.1 — busca híbrida/semântica
+Status: **condicional — não iniciado**.
+
+Possíveis entregas, somente se benchmark real justificar:
 - pgvector;
 - embeddings;
 - lexical + vetorial;
 - re-ranking;
-- comparação A/B contra M7.0.
+- comparação A/B contra o baseline M7.0.
 
-Critério: embeddings só permanecem se melhorarem de forma mensurável a recuperação sem custo desproporcional de tokens/latência.
+Critério: manter embeddings somente se houver melhoria mensurável de recuperação que compense custo, latência e complexidade operacional.
+
+### Próxima validação
+
+Criar um conjunto **privado** de consultas reais dos projetos, com gabaritos de `source_ref`. Dados e documentos privados não entram no repositório público; somente métricas agregadas podem ser registradas.
 
 ## M8 — Automação e agentes
-Planejado:
+Status: **planejado**.
+
 - geração de prompts Codex;
 - preparação de tarefas técnicas;
 - acompanhamento de PRs;

@@ -16,3 +16,4 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: pytest -q
+      - run: python scripts/context_benchmark.py benchmarks/context_cases.json --output /tmp/context-benchmark.json
