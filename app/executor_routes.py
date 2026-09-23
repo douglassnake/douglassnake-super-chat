@@ -26,6 +26,10 @@ from app.executor_control import (
     sanitize_executor_payload,
     validate_executor_action,
 )
+from app.git_apply_resolver import (
+    GitApplyResolutionError,
+    resolve_apply_git_change_payload,
+)
 from app.models import utcnow
 from app.worker_attempts import create_attempt, finalize_attempt, mark_attempt_running
 from app.worker_models import WorkerAttempt
@@ -125,7 +129,21 @@ def create_executor_request(
     execution = get_execution(db, execution_id)
     handoff = get_handoff(db, execution.handoff_id)
     validate_authorization(execution, handoff, payload.action)
-    cleaned_payload = bounded_payload(payload.payload, field_name="Executor payload")
+
+    if payload.action == "apply_git_change":
+        if payload.adapter_type != "isolated-local":
+            raise HTTPException(
+                status_code=422,
+                detail="apply_git_change requires the isolated-local adapter",
+            )
+        try:
+            resolved = resolve_apply_git_change_payload(db, execution, payload.payload)
+        except GitApplyResolutionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        cleaned_payload = bounded_payload(resolved, field_name="Resolved Git apply payload")
+    else:
+        cleaned_payload = bounded_payload(payload.payload, field_name="Executor payload")
+
     fingerprint = executor_request_fingerprint(
         execution_id=execution.id,
         action=payload.action,

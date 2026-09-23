@@ -12,6 +12,7 @@ ALLOWED_HANDOFF_ACTIONS = {
     "modify_worktree",
     "run_tests",
     "create_branch",
+    "apply_git_change",
     "create_commit",
     "create_pull_request",
 }

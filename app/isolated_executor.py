@@ -10,12 +10,31 @@ from app.worker_runtime import WorkerJob, WorkerLimits
 
 
 ISOLATED_EXECUTABLE_ACTIONS = frozenset(
-    {"read_repository", "run_tests", "modify_worktree", "create_branch"}
+    {
+        "read_repository",
+        "run_tests",
+        "modify_worktree",
+        "create_branch",
+        "apply_git_change",
+    }
 )
 RUN_TESTS_KEYS = frozenset({"worktree", "preset", "test_target", "timeout_seconds"})
 READ_REPOSITORY_KEYS = frozenset({"worktree", "scope"})
 MODIFY_WORKTREE_KEYS = frozenset({"worktree", "operations"})
 CREATE_BRANCH_KEYS = frozenset({"worktree", "branch_name"})
+APPLY_GIT_CHANGE_KEYS = frozenset(
+    {
+        "approval_id",
+        "source_request_id",
+        "branch_request_id",
+        "patch_digest",
+        "changed_files",
+        "worktree",
+        "operations",
+        "branch_name",
+        "base_sha",
+    }
+)
 
 
 class IsolatedLocalExecutorAdapter:
@@ -42,6 +61,7 @@ class IsolatedLocalExecutorAdapter:
         modify_max_operations: int = 40,
         modify_max_total_write_bytes: int = 65_536,
         modify_max_patch_bytes: int = 65_536,
+        git_staging_root: str | None = None,
         worker_client: ProcessWorkerClient | None = None,
     ) -> None:
         self.enabled = bool(enabled)
@@ -66,8 +86,11 @@ class IsolatedLocalExecutorAdapter:
         self.modify_max_patch_bytes = max(1, int(modify_max_patch_bytes))
         self.worker_client = worker_client or ProcessWorkerClient()
         self.root: Path | None = None
+        self.git_staging_root: Path | None = None
         if worktree_root:
             self.root = Path(worktree_root).expanduser().resolve(strict=False)
+        if git_staging_root:
+            self.git_staging_root = Path(git_staging_root).expanduser().resolve(strict=False)
         self.available = bool(
             self.enabled
             and self.root is not None
@@ -96,6 +119,7 @@ class IsolatedLocalExecutorAdapter:
             modify_max_operations=settings.executor_modify_max_operations,
             modify_max_total_write_bytes=settings.executor_modify_max_total_write_bytes,
             modify_max_patch_bytes=settings.executor_modify_max_patch_bytes,
+            git_staging_root=settings.executor_git_staging_root,
         )
 
     def execute(self, command: ExecutorCommand) -> ExecutorOutcome:
@@ -112,6 +136,8 @@ class IsolatedLocalExecutorAdapter:
             return self._modify_worktree(command)
         if command.action == "create_branch":
             return self._create_branch(command)
+        if command.action == "apply_git_change":
+            return self._apply_git_change(command)
         return self._run_tests(command)
 
     def _ensure_available(self) -> None:
@@ -281,6 +307,30 @@ class IsolatedLocalExecutorAdapter:
             command,
             relative_worktree=relative,
             payload={"branch_name": branch_name},
+            timeout=min(self.timeout_seconds, self.max_timeout_seconds),
+            backend="subprocess-sandbox",
+        )
+
+    def _apply_git_change(self, command: ExecutorCommand) -> ExecutorOutcome:
+        payload = command.payload
+        self._validate_keys(payload, APPLY_GIT_CHANGE_KEYS, "apply_git_change")
+        _worktree, relative = self._worktree(payload)
+        if self.git_staging_root is None:
+            raise ExecutorUnavailable("EXECUTOR_GIT_STAGING_ROOT is not configured")
+        if not self.git_staging_root.exists() or not self.git_staging_root.is_dir():
+            raise ExecutorUnavailable("Configured Git staging root does not exist or is not a directory")
+        worker_payload = dict(payload)
+        worker_payload["staging_root"] = str(self.git_staging_root.resolve(strict=True))
+        worker_payload["policy"] = {
+            "max_files": self.modify_max_files,
+            "max_operations": self.modify_max_operations,
+            "max_total_write_bytes": self.modify_max_total_write_bytes,
+            "max_patch_bytes": self.modify_max_patch_bytes,
+        }
+        return self._dispatch(
+            command,
+            relative_worktree=relative,
+            payload=worker_payload,
             timeout=min(self.timeout_seconds, self.max_timeout_seconds),
             backend="subprocess-sandbox",
         )
