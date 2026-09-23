@@ -32,6 +32,7 @@ running
   ├── progresso
   ├── referências técnicas
   ├── evidências por critério
+  ├── verificação GitHub somente leitura
   └── log append-only
         ↓
 completed | failed | cancelled
@@ -47,7 +48,7 @@ Execution completed = critérios de aceite possuem evidência explícita passed
 
 Nenhuma dessas etapas autoriza implicitamente merge, deploy, publicação ou escrita em serviços externos.
 
-## Marcos M1–M8.2
+## Marcos M1–M8.3
 
 - **M1 — Memória operacional:** projetos, decisões, tarefas, resumos, PostgreSQL, Alembic e Docker.
 - **M2 — Context Engine:** ranking, deduplicação, compactação, orçamento de tokens e `continue`.
@@ -59,6 +60,7 @@ Nenhuma dessas etapas autoriza implicitamente merge, deploy, publicação ou esc
 - **M8.0 — Agent Task Packs:** objetivo, critérios de aceite, guardrails, contexto, fontes e fingerprint.
 - **M8.1 — Agent Handoffs:** executor/alvo, allowlist de ações, release explícito e trilha de auditoria.
 - **M8.2 — Agent Executions:** progresso, referências observadas, eventos append-only e gate de evidências por critério.
+- **M8.3 — GitHub Verification:** commit/PR/check-runs verificados por leitura e evidência de CI somente por regra explícita.
 
 ## Agent Task Packs
 
@@ -104,6 +106,7 @@ started
 progress
 technical_refs
 criterion_evidence
+external_verification
 status
 ```
 
@@ -124,6 +127,51 @@ A conclusão é bloqueada enquanto qualquer critério estiver `pending` ou `fail
 Quando existe execução rastreada, os endpoints diretos de `complete/fail/cancel` do handoff são bloqueados para impedir bypass do gate de evidências.
 
 Veja `docs/AGENT_EXECUTIONS.md`.
+
+## GitHub Verification
+
+O M8.3 verifica referências já registradas em uma execução sem aceitar um repositório arbitrário do cliente. O repositório precisa existir como fonte GitHub ativa do projeto.
+
+Leituras pontuais adicionadas ao conector:
+
+```text
+GET /repos/{repository}/commits/{sha}
+GET /repos/{repository}/pulls/{number}
+GET /repos/{repository}/commits/{sha}/check-runs
+```
+
+Resultados normalizados:
+
+```text
+verified
+mismatch
+not_found
+unavailable
+```
+
+`verified` confirma a identidade/proveniência da referência; não significa automaticamente que um critério passou.
+
+A condição de CI é separada:
+
+```text
+checks_green =
+  pelo menos um check
+  AND todos completed
+  AND todos conclusion = success
+```
+
+Uma chamada sem regra explícita registra apenas `external_verification`. Para converter checks verdes em evidência é necessário mapear explicitamente o critério:
+
+```json
+{
+  "criterion_index": 0,
+  "evidence_rule": "checks_green"
+}
+```
+
+Checks pendentes ou com qualquer conclusão diferente de `success` nunca produzem evidência `passed` por essa regra.
+
+Veja `docs/GITHUB_VERIFICATION.md`.
 
 ## Recuperação e economia de tokens
 
@@ -157,7 +205,7 @@ Redaction é defesa adicional, não autorização para inserir secrets no sistem
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-2-execution-tracking
+git checkout codex/m8-3-github-verification
 cp .env.example .env
 docker compose up --build
 ```
@@ -200,6 +248,7 @@ GET    /agent-executions/{execution_id}/events
 POST   /agent-executions/{execution_id}/progress
 POST   /agent-executions/{execution_id}/technical-refs
 POST   /agent-executions/{execution_id}/evidence
+POST   /agent-executions/{execution_id}/verify-github
 POST   /agent-executions/{execution_id}/complete
 POST   /agent-executions/{execution_id}/fail
 POST   /agent-executions/{execution_id}/cancel
@@ -207,4 +256,4 @@ POST   /agent-executions/{execution_id}/cancel
 
 ## Próxima etapa
 
-O próximo incremento planejado é **M8.3 — verificação externa somente leitura**: correlacionar referências já registradas de PR/commit com GitHub e Actions para anexar evidências verificáveis, sem criar ou alterar recursos externos e sem promover automaticamente merge/deploy/publicação.
+O **M8.4 — executor controlado** permanece futuro e condicional. Antes de qualquer capacidade de escrita real, cada ação precisará de política própria, auditoria do efeito produzido e autorização separada. Merge, deploy e publicação continuam fora da autorização implícita do sistema.

@@ -114,26 +114,43 @@ Entregas:
 
 O M8.2 não inicia agente, não executa comandos e não cria/modifica branch, commit, PR ou CI.
 
-### M8.3 — verificação externa somente leitura
-Status: **próximo marco**.
+### M8.3 — verificação externa GitHub somente leitura
+Status: **concluído na branch `codex/m8-3-github-verification`**.
 
-Objetivo: transformar referências técnicas já registradas em evidências verificáveis por leitura de fontes externas já conectadas, sem ampliar permissões de escrita.
+Entregas:
+- reutilização do GitHub Connector em modo somente leitura;
+- leituras pontuais de commit, PR e check-runs;
+- `GitHubAPIError` com status HTTP observável e degradação de falhas de rede;
+- repositório derivado exclusivamente de `ProjectSource` GitHub ativo;
+- validação de que `pr_url` pertence a repositório vinculado ao projeto;
+- commit isolado só é resolvido automaticamente quando existe exatamente uma fonte GitHub ativa;
+- status normalizados `verified`, `mismatch`, `not_found`, `unavailable`;
+- detecção de divergência entre commit registrado, SHA observado e `head.sha` do PR;
+- resumo estrito de check-runs;
+- `checks_green` somente quando existe check e todos estão `completed/success`;
+- evento append-only `external_verification` com timestamp/proveniência;
+- endpoint `POST /agent-executions/{execution_id}/verify-github`;
+- verificação sem regra explícita não altera critérios;
+- regra explícita `checks_green` pode gerar `criterion_evidence = passed` para índice informado;
+- checks não verdes nunca promovem evidência `passed`;
+- reader injetável e testes sem rede/credenciais;
+- documentação `docs/GITHUB_VERIFICATION.md`.
 
-Possíveis entregas:
-- correlacionar `commit_sha` e `pr_url` com o GitHub Connector;
-- ler estado atual de PR e checks/Actions associados;
-- registrar observações como eventos de verificação;
-- anexar evidência verificável de CI a um critério somente por regra explícita;
-- detectar referência ausente, divergente ou stale;
-- manter proveniência e timestamp da leitura;
-- nenhuma criação/edição de branch, commit ou PR;
-- nenhum merge/deploy/publicação;
-- nenhuma promoção automática de evidência ambígua.
+O M8.3 não cria/edita branch, commit ou PR, não comenta/aprova PR, não reexecuta CI e não faz merge/deploy/publicação.
 
 ### M8.4 — executor controlado
 Status: **futuro/condicional**.
 
-Somente após M8.3 e definição de políticas específicas por ação. Qualquer adapter de execução deverá respeitar a allowlist do handoff, registrar cada efeito e manter merge/deploy/publicação em autorização separada.
+Somente após definição de políticas específicas por ação. Um adapter de execução real deverá:
+- validar a allowlist do handoff antes de cada efeito;
+- registrar pedido, efeito e resultado;
+- possuir idempotência e trilha de auditoria;
+- separar leitura de escrita;
+- exigir política própria para criar branch/commit/PR;
+- manter merge, deploy, publicação e outras ações de alto impacto em autorização separada;
+- nunca ampliar permissões a partir de contexto inferido.
+
+Antes do M8.4, também é recomendável calibrar M7.0 com consultas reais privadas para decidir M7.1 com dados, não por suposição.
 
 ## Regra de evolução
 
