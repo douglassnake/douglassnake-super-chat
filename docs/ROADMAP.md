@@ -54,20 +54,18 @@ Continuam fora da política:
 - shell/comando/binário/argv arbitrário;
 - escrita externa genérica.
 
-## M9 — Segurança operacional da interface
+## M9 — Segurança e operação self-hosted
 
 ### M9.0 — autenticação single-admin e controle de acesso
-Status: **em implementação na branch `codex/m9-auth-access-control`**.
+Status: **concluído e integrado em `main`**.
 
-Objetivo: proteger `/app`, APIs, OpenAPI e endpoints operacionais antes de qualquer deploy externo.
-
-Entregas previstas/implementadas:
+Entregas:
 - autenticação single-admin configurada por ambiente;
 - PBKDF2-SHA256 com salt aleatório;
 - sessão opaca server-side em `auth_sessions`;
 - persistência somente de hashes do token de sessão e CSRF;
 - cookie de sessão HttpOnly + SameSite=Strict;
-- CSRF vinculado à sessão para métodos mutáveis;
+- CSRF double-submit vinculado à sessão para métodos mutáveis;
 - login/logout/status;
 - expiração e revogação de sessão;
 - tela de login integrada;
@@ -78,7 +76,7 @@ Entregas previstas/implementadas:
 - testes e readiness atualizados;
 - nenhum novo efeito externo habilitado.
 
-Fora do M9.0:
+Continuam fora do M9.0:
 - múltiplos usuários;
 - MFA;
 - OAuth/OIDC/SSO;
@@ -86,14 +84,29 @@ Fora do M9.0:
 - RBAC granular.
 
 ### M9.1 — observabilidade operacional
-Status: **não iniciado**.
+Status: **implementado funcionalmente na branch `codex/m9-1-operational-observability`; CI funcional verde antes do fechamento documental**.
 
-Prioridades:
-- métricas de autenticação sem PII/segredos;
-- auditoria de execuções e falhas operacionais;
-- health/readiness separados;
-- retenção e rotação de logs;
-- alertas para tentativas órfãs, falhas de reconciliação e adapters indisponíveis.
+Entregas:
+- API `0.9.1`;
+- `X-Request-ID` validado ou gerado server-side em cada resposta normal;
+- logs HTTP estruturados em JSON para `stdout`;
+- logs sem query string, body, cookies, Authorization ou tokens;
+- exceções não tratadas registram apenas o tipo, não a mensagem;
+- `GET /ops/status` protegido com readiness do banco, versão, ambiente e uptime;
+- `GET /ops/summary` com status reais agrupados de execuções, requests, workers e aprovações;
+- sinais de leases expirados, aprovações pendentes e falhas nas últimas 24 h;
+- `GET /ops/failures` com falhas recentes sanitizadas e truncadas;
+- nenhuma tabela/migration nova;
+- nenhum serviço de telemetria externo;
+- nenhum novo efeito externo habilitado.
+
+Validação funcional:
+- pytest: sucesso;
+- benchmark CLI: sucesso;
+- integration-readiness: sucesso;
+- PostgreSQL 17 + Alembic smoke: sucesso.
+
+Veja `docs/OBSERVABILITY.md`.
 
 ### M9.2 — credenciais dedicadas e recuperação self-hosted
 Status: **não iniciado**.
@@ -102,10 +115,11 @@ Prioridades:
 - backend de segredos dedicado fora do banco operacional;
 - rotação de credenciais;
 - runbook de backup/restore;
-- teste real de recuperação em ambiente self-hosted.
+- teste real de recuperação em ambiente self-hosted;
+- política de retenção/rotação de logs no runtime escolhido.
 
 ## Regra de evolução
 
 Cada efeito externo deve ter autorização própria, input resolvido pelo servidor, prova de estado anterior, verificação pós-efeito, segredo fora do estado persistido e reconciliação explícita quando rollback total não for possível.
 
-Nenhum deploy externo deve ocorrer antes de M9.0 estar integrado, CI verde e HTTPS/reverse proxy estarem configurados no ambiente alvo.
+Nenhum deploy externo deve ocorrer antes de M9.0 estar integrado, CI verde, HTTPS/reverse proxy estarem configurados e os procedimentos de backup/restore do M9.2 terem sido testados no ambiente alvo.
