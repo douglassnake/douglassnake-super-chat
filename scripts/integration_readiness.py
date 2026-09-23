@@ -7,6 +7,10 @@ from pathlib import Path
 import sys
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
@@ -19,7 +23,6 @@ from app.isolated_executor import IsolatedLocalExecutorAdapter
 from app.main import app
 
 
-ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_API_VERSION = "0.8.15"
 SENSITIVE_SETTINGS = {
     "database_url",
