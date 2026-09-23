@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -120,4 +121,88 @@ class ProjectSnapshot(BaseModel):
     summary: SessionSummaryRead | None
     decisions: list[DecisionRead]
     open_tasks: list[TaskRead]
+    generated_at: datetime
+
+
+class ContextItemCreate(BaseModel):
+    kind: str = Field(min_length=1, max_length=50)
+    title: str | None = Field(default=None, max_length=255)
+    content: str = Field(min_length=1)
+    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+    source_type: str = Field(default="manual", min_length=1, max_length=50)
+    source_ref: str | None = None
+    source_timestamp: datetime | None = None
+    generated: bool = False
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+
+
+class ContextItemRead(ORMModel):
+    id: UUID
+    project_id: UUID | None
+    kind: str
+    title: str | None
+    content: str
+    importance: float
+    source_type: str
+    source_ref: str | None
+    source_timestamp: datetime | None
+    generated: bool
+    valid_from: datetime | None
+    valid_to: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+ContextProfile = Literal["minimal", "standard", "deep"]
+
+
+class ContextBuildRequest(BaseModel):
+    project_id: UUID
+    query: str = Field(default="", max_length=4000)
+    profile: ContextProfile = "standard"
+
+
+class ContextProject(BaseModel):
+    id: UUID
+    slug: str
+    name: str
+    description: str | None
+    status: str
+    priority: int
+    next_action: str | None
+    last_activity_at: datetime | None
+
+
+class ContextSelectedItem(BaseModel):
+    kind: str
+    title: str | None
+    content: str
+    source_type: str
+    source_ref: str | None
+    score: float
+    estimated_tokens: int
+
+
+class ContextSource(BaseModel):
+    source_type: str
+    source_ref: str | None
+
+
+class ContextBudget(BaseModel):
+    max_tokens: int
+    estimated_tokens: int
+    candidate_tokens: int
+    candidate_count: int
+    selected_count: int
+    remaining_tokens: int
+
+
+class ContextPackage(BaseModel):
+    project: ContextProject
+    query: str
+    profile: ContextProfile
+    items: list[ContextSelectedItem]
+    sources: list[ContextSource]
+    budget: ContextBudget
     generated_at: datetime
