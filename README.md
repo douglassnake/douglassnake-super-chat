@@ -35,6 +35,108 @@ Modelo de IA
 Resposta / próxima ação
 ```
 
+## M1 — Memória operacional
+
+O M1 entrega a primeira API executável do Segundo Cérebro:
+
+- FastAPI;
+- PostgreSQL + SQLAlchemy 2;
+- migrations Alembic;
+- projetos, decisões, tarefas e resumos;
+- entidades preparadas para fontes, eventos e itens de contexto;
+- snapshot consolidado de cada projeto;
+- Docker Compose;
+- testes automatizados.
+
+### Executar com Docker
+
+Pré-requisito: Docker com Compose.
+
+```bash
+git clone https://github.com/douglassnake/douglassnake-super-chat.git
+cd douglassnake-super-chat
+git checkout codex/m1-operational-memory
+
+docker compose up --build
+```
+
+A API ficará disponível em:
+
+```text
+http://localhost:8000
+```
+
+Documentação OpenAPI:
+
+```text
+http://localhost:8000/docs
+```
+
+Health check:
+
+```bash
+curl http://localhost:8000/health
+```
+
+O container da API executa `alembic upgrade head` antes de iniciar o Uvicorn.
+
+### Configuração
+
+Para customizar credenciais locais:
+
+```bash
+cp .env.example .env
+```
+
+Nunca versionar `.env`, tokens, chaves ou dados pessoais. O repositório é público.
+
+### Executar testes
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # Linux/macOS
+# .venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+pytest -q
+```
+
+Os testes usam SQLite em memória e dados fictícios; não precisam do banco de produção.
+
+## Endpoints M1
+
+```text
+GET    /health
+POST   /projects
+GET    /projects
+GET    /projects/{project_id}
+PATCH  /projects/{project_id}
+POST   /projects/{project_id}/decisions
+GET    /projects/{project_id}/decisions
+POST   /projects/{project_id}/tasks
+GET    /projects/{project_id}/tasks
+PATCH  /tasks/{task_id}
+POST   /projects/{project_id}/summaries
+GET    /projects/{project_id}/snapshot
+```
+
+O endpoint `snapshot` é a base para o futuro comando **continuar projeto**.
+
+Exemplo conceitual:
+
+```json
+{
+  "project": {
+    "name": "MeuNegocioIA",
+    "status": "M2.6",
+    "next_action": "Implementar confirmação financeira"
+  },
+  "summary": {},
+  "decisions": [],
+  "open_tasks": [],
+  "generated_at": "..."
+}
+```
+
 ## Princípios
 
 1. **Contexto mínimo suficiente** — não carregar histórico completo quando um resumo estruturado basta.
@@ -51,41 +153,13 @@ Resposta / próxima ação
 - **GitHub:** código, commits, branches, PRs, Issues, Actions e documentação técnica.
 - **Google Drive:** documentos, PDFs, Word, planilhas e arquivos oficiais.
 
-## Arquivos de contexto por projeto
-
-```text
-/context/
-  PROJECT.md
-  STATUS.md
-  CONTEXT.md
-  DECISIONS.md
-  BACKLOG.md
-  SUMMARY.md
-  CODEX.md
-```
-
-Esses arquivos são projeções/artefatos de contexto. Conteúdo privado real não deve ser versionado neste repositório público.
-
 ## Context Engine
 
-O Context Engine monta pacotes de contexto em níveis:
+O Context Engine será desenvolvido no M2 e montará pacotes de contexto em níveis:
 
 - **mínimo:** ~1–2k tokens;
 - **padrão:** ~3–6k tokens;
 - **profundo:** ~10–20k tokens;
 - **histórico ampliado:** somente quando necessário.
 
-## Primeira entrega
-
-A primeira etapa implementa a fundação do Segundo Cérebro:
-
-- modelo de dados;
-- cadastro de projetos;
-- memória de status/decisões/backlog;
-- Context Engine;
-- resumo incremental de sessões;
-- integração somente-leitura com GitHub;
-- endpoint `continuar projeto`;
-- observabilidade do tamanho estimado do contexto.
-
-Veja `docs/ARCHITECTURE.md`, `docs/CONTEXT_ENGINE.md` e `docs/ROADMAP.md`.
+Veja `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `docs/CONTEXT_ENGINE.md` e `docs/ROADMAP.md`.
