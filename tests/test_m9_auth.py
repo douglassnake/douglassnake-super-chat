@@ -132,6 +132,10 @@ def test_authentication_session_csrf_and_logout(auth_client) -> None:
     assert raw_session
     assert raw_csrf
 
+    status_response = client.get("/auth/status")
+    assert status_response.status_code == 200
+    assert status_response.json()["csrf_cookie_name"] == settings.auth_csrf_cookie_name
+
     with SessionLocal() as db:
         rows = list(db.scalars(select(AuthSession)))
         assert len(rows) == 1
@@ -142,14 +146,28 @@ def test_authentication_session_csrf_and_logout(auth_client) -> None:
         assert raw_csrf not in stored.csrf_token_hash
 
     assert client.get("/private").status_code == 200
-    assert client.post("/mutate").status_code == 200
+
+    missing_header = client.post("/mutate")
+    assert missing_header.status_code == 403
+
+    wrong_header = client.post("/mutate", headers={"X-CSRF-Token": "wrong"})
+    assert wrong_header.status_code == 403
+
+    valid_mutation = client.post("/mutate", headers={"X-CSRF-Token": raw_csrf})
+    assert valid_mutation.status_code == 200
 
     client.cookies.delete(settings.auth_csrf_cookie_name)
-    missing_csrf = client.post("/mutate")
-    assert missing_csrf.status_code == 403
+    missing_cookie = client.post("/mutate", headers={"X-CSRF-Token": raw_csrf})
+    assert missing_cookie.status_code == 403
 
     client.cookies.set(settings.auth_csrf_cookie_name, raw_csrf, path="/")
-    logout = client.post("/auth/logout")
+    cross_site = client.post(
+        "/mutate",
+        headers={"X-CSRF-Token": raw_csrf, "Sec-Fetch-Site": "cross-site"},
+    )
+    assert cross_site.status_code == 403
+
+    logout = client.post("/auth/logout", headers={"X-CSRF-Token": raw_csrf})
     assert logout.status_code == 204
     assert client.get("/private").status_code == 401
 
