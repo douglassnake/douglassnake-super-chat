@@ -5,8 +5,11 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.agent_routes import router as agent_router
+from app.auth import AuthMiddleware, validate_security_settings
+from app.auth_routes import router as auth_router
 from app.core.config import get_settings
 from app.dashboard_routes import router as dashboard_router
+from app.database import SessionLocal
 from app.evaluation_routes import router as evaluation_router
 from app.execution_routes import router as execution_router
 from app.executor_routes import router as executor_router
@@ -18,12 +21,14 @@ from app.session_routes import router as session_router
 from app.worker_attempt_routes import router as worker_attempt_router
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="0.8.15")
+validate_security_settings(settings)
+app = FastAPI(title=settings.app_name, version="0.9.0")
+app.add_middleware(AuthMiddleware, settings=settings, session_factory=SessionLocal)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "environment": settings.environment}
+    return {"status": "ok"}
 
 
 @app.get("/", include_in_schema=False)
@@ -31,6 +36,7 @@ def root() -> RedirectResponse:
     return RedirectResponse(url="/app/")
 
 
+app.include_router(auth_router)
 app.include_router(router)
 app.include_router(session_router)
 app.include_router(dashboard_router)

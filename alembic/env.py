@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.database import Base
-from app import agent_models, git_change_models, models, worker_models  # noqa: F401
+from app import agent_models, auth_models, git_change_models, models, worker_models  # noqa: F401
 
 config = context.config
 settings = get_settings()

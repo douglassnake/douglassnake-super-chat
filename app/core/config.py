@@ -13,6 +13,16 @@ class Settings(BaseSettings):
         repr=False,
     )
 
+    # M9.0: autenticação self-hosted single-admin. Desenvolvimento continua
+    # explicitamente permissivo por padrão; produção é validada fail-closed.
+    auth_enabled: bool = False
+    auth_username: str = "admin"
+    auth_password_hash: str | None = Field(default=None, exclude=True, repr=False)
+    auth_session_ttl_seconds: int = 43_200
+    auth_cookie_name: str = "superchat_session"
+    auth_csrf_cookie_name: str = "superchat_csrf"
+    auth_cookie_secure: bool = False
+
     # Credencial GitHub somente leitura. Continua acessível em memória, mas não
     # participa de model_dump/model_dump_json/repr de Settings.
     github_token: str | None = Field(default=None, exclude=True, repr=False)

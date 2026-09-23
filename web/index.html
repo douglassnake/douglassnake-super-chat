@@ -39,7 +39,10 @@
           <h1>Segundo Cérebro</h1>
           <p>Memória, contexto e continuidade de projetos.</p>
         </div>
-        <button id="refresh-button" class="button ghost" type="button">Atualizar</button>
+        <div class="action-row">
+          <button id="refresh-button" class="button ghost" type="button">Atualizar</button>
+          <button class="button ghost" type="button" onclick="window.superchatLogout()">Sair</button>
+        </div>
       </header>
 
       <section id="stats" class="stats-grid" aria-label="Resumo">
@@ -142,6 +145,7 @@
   </dialog>
 
   <div id="toast" class="toast hidden" role="status"></div>
+  <script src="/app/session.js"></script>
   <script src="/app/app.js" defer></script>
 </body>
 </html>
