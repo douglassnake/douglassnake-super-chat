@@ -17,3 +17,35 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pytest -q
       - run: python scripts/context_benchmark.py benchmarks/context_cases.json --output /tmp/context-benchmark.json
+
+  integration-readiness:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: superchat
+          POSTGRES_USER: superchat
+          POSTGRES_PASSWORD: superchat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U superchat -d superchat"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://superchat:superchat@localhost:5432/superchat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Validate static integration guardrails
+        run: python scripts/integration_readiness.py
+      - name: Upgrade clean PostgreSQL through all Alembic revisions
+        run: alembic upgrade head
+      - name: Validate migrated database is at the single head
+        run: python scripts/integration_readiness.py --database
