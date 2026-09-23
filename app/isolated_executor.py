@@ -10,11 +10,12 @@ from app.worker_runtime import WorkerJob, WorkerLimits
 
 
 ISOLATED_EXECUTABLE_ACTIONS = frozenset(
-    {"read_repository", "run_tests", "modify_worktree"}
+    {"read_repository", "run_tests", "modify_worktree", "create_branch"}
 )
 RUN_TESTS_KEYS = frozenset({"worktree", "preset", "test_target", "timeout_seconds"})
 READ_REPOSITORY_KEYS = frozenset({"worktree", "scope"})
 MODIFY_WORKTREE_KEYS = frozenset({"worktree", "operations"})
+CREATE_BRANCH_KEYS = frozenset({"worktree", "branch_name"})
 
 
 class IsolatedLocalExecutorAdapter:
@@ -109,6 +110,8 @@ class IsolatedLocalExecutorAdapter:
             return self._read_repository(command)
         if command.action == "modify_worktree":
             return self._modify_worktree(command)
+        if command.action == "create_branch":
+            return self._create_branch(command)
         return self._run_tests(command)
 
     def _ensure_available(self) -> None:
@@ -263,6 +266,21 @@ class IsolatedLocalExecutorAdapter:
             command,
             relative_worktree=relative,
             payload=worker_payload,
+            timeout=min(self.timeout_seconds, self.max_timeout_seconds),
+            backend="subprocess-sandbox",
+        )
+
+    def _create_branch(self, command: ExecutorCommand) -> ExecutorOutcome:
+        payload = command.payload
+        self._validate_keys(payload, CREATE_BRANCH_KEYS, "create_branch")
+        _worktree, relative = self._worktree(payload)
+        branch_name = str(payload.get("branch_name") or "").strip()
+        if not branch_name:
+            raise ExecutorUnavailable("create_branch requires branch_name")
+        return self._dispatch(
+            command,
+            relative_worktree=relative,
+            payload={"branch_name": branch_name},
             timeout=min(self.timeout_seconds, self.max_timeout_seconds),
             backend="subprocess-sandbox",
         )

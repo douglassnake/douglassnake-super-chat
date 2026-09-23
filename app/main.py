@@ -10,6 +10,7 @@ from app.dashboard_routes import router as dashboard_router
 from app.evaluation_routes import router as evaluation_router
 from app.execution_routes import router as execution_router
 from app.executor_routes import router as executor_router
+from app.git_change_routes import router as git_change_router
 from app.github_verification_routes import router as github_verification_router
 from app.handoff_routes import router as handoff_router
 from app.routes import router
@@ -17,7 +18,7 @@ from app.session_routes import router as session_router
 from app.worker_attempt_routes import router as worker_attempt_router
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="0.8.8")
+app = FastAPI(title=settings.app_name, version="0.8.9")
 
 
 @app.get("/health")
@@ -40,6 +41,7 @@ app.include_router(execution_router)
 app.include_router(github_verification_router)
 app.include_router(executor_router)
 app.include_router(worker_attempt_router)
+app.include_router(git_change_router)
 
 web_dir = Path(__file__).resolve().parent.parent / "web"
 app.mount("/app", StaticFiles(directory=web_dir, html=True), name="web")

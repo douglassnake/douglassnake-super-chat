@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timezone
 
 from app.agent_handoff import sanitize_value
+from app.git_branch_worker import execute_create_branch
 from app.worker_modify import execute_modify_worktree
 from app.worker_provenance import build_worker_provenance
 from app.worker_runtime import WorkerJobError, execute_worker_job, loads_job
@@ -18,6 +19,8 @@ def main() -> int:
         job = loads_job(raw)
         if job.action == "modify_worktree":
             outcome = execute_modify_worktree(job)
+        elif job.action == "create_branch":
+            outcome = execute_create_branch(job)
         else:
             outcome = execute_worker_job(job)
         payload = outcome.to_dict()

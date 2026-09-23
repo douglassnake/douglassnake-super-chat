@@ -21,132 +21,92 @@ Agent Execution
   ↓
 Controlled Executor
   ↓ release por ação
-Isolated Local Adapter
+WorkerAttempt + WorkerJob
   ↓
-WorkerAttempt
-leased → running → completed | failed
-  ↓
-WorkerJob JSON v1
-  ↓
-ProcessWorkerClient
-  ↓ processo separado da API
-Worker Runtime
+Worker isolado
   ├── read_repository
   ├── run_tests
-  └── modify_worktree → workspace efêmero → diff revisável
+  ├── modify_worktree → cópia temporária → diff
+  └── create_branch → ref local superchat/*
   ↓
-Proveniência
-worker_id + job_digest + result_digest
+Proveniência + auditoria
 ```
 
-A autorização é separada por camada. Aprovar Task Pack não libera execução; liberar handoff não libera qualquer ação; cada `ExecutorRequest` exige release próprio. Merge, deploy e publicação nunca são implícitos.
+Aprovações são deliberadamente separadas. Aprovar um Task Pack não libera execução; liberar um handoff não libera qualquer ação; cada `ExecutorRequest` exige release próprio. Aprovar um `patch_digest` não cria branch, e criar branch não aplica o patch.
 
 ## Marcos
 
-- **M1** memória operacional;
-- **M2** Context Engine com budget de tokens;
-- **M3** GitHub somente leitura;
-- **M4** Session Memory;
-- **M5** interface web;
-- **M6** Google Drive/Calendar somente leitura;
-- **M7.0** benchmark de recuperação;
+M1–M7 constroem memória, contexto, integrações e métricas. M8 adiciona automação progressivamente controlada:
+
 - **M8.0** Agent Task Packs;
-- **M8.1** Agent Handoffs;
-- **M8.2** Agent Executions e evidências;
+- **M8.1** handoffs auditáveis;
+- **M8.2** execution tracking e evidências;
 - **M8.3** verificação GitHub somente leitura;
 - **M8.4** Controlled Executor;
 - **M8.5** adapter local isolado;
-- **M8.6** worker endurecido e separado da API;
-- **M8.7** proveniência, leases, heartbeat, reconciliação e retry;
-- **M8.8** alteração efêmera + diff revisável.
+- **M8.6** worker endurecido separado da API;
+- **M8.7** proveniência, lease/heartbeat, reconciliação e retry;
+- **M8.8** alteração efêmera + diff revisável;
+- **M8.9** aprovação por digest + branch Git local dedicado.
 
-## Política de ações
-
-Ações reconhecidas:
-
-```text
-read_context
-read_repository
-modify_worktree
-run_tests
-create_branch
-create_commit
-create_pull_request
-```
-
-Capacidades **reais** atuais:
+## Capacidades reais atuais
 
 ```text
 read_repository → somente metadata
 run_tests       → somente preset server-side pytest
-modify_worktree → somente cópia temporária + unified diff
+modify_worktree → cópia temporária + unified diff
+create_branch   → somente branch local superchat/*
 ```
 
-Ainda sem efeito real:
+Ainda sem implementação real:
 
 ```text
-create_branch
+aplicar proposta aprovada no branch
 create_commit
 create_pull_request
 ```
 
 Continuam proibidos: merge, deploy, publicação, escrita em Drive/Calendar, escrita externa genérica e shell/comando/binário/argv arbitrário.
 
-## M8.8 — alteração efêmera
+## M8.8 — proposta revisável
 
-`modify_worktree` aceita somente operações semânticas:
+`modify_worktree` aceita apenas operações semânticas `write_text` e `delete_file`. As mudanças ocorrem em cópia temporária e geram inventário de arquivos + unified diff + `patch_digest` SHA-256. O worktree original não é alterado.
 
-```json
-{"op":"write_text","path":"src/example.py","content":"..."}
-{"op":"delete_file","path":"docs/old.md"}
-```
-
-Fluxo:
-
-```text
-worktree original (somente leitura por design)
-        ↓
-cópia temporária
-        ↓
-write_text / delete_file
-        ↓
-unified diff
-        ↓
-redaction
-        ↓
-patch_digest SHA-256
-        ↓
-resultado auditável
-        ↓
-workspace temporário removido
-```
-
-O resultado inclui inventário de arquivos `added/modified/deleted`, `patch`, `patch_digest`, tamanho, indicação de redaction e proveniência M8.7. O worktree original não é persistido nem alterado pelo contrato M8.8.
-
-Limites padrão, definidos apenas no servidor:
-
-```text
-20 arquivos distintos
-40 operações
-64 KiB escritos
-64 KiB de patch persistido
-```
-
-Paths absolutos, `..`, paths por symlink, arquivos binários/non-UTF-8 e payloads de comando são rejeitados. Conteúdo sensível detectável é bloqueado/redigido antes da persistência.
+Limites padrão do servidor: 20 arquivos, 40 operações, 64 KiB escritos e 64 KiB de patch persistido. Paths absolutos, `..`, symlink, arquivos binários/non-UTF-8 e conteúdo sensível detectável são bloqueados/redigidos.
 
 Veja `docs/WORKTREE_DIFF.md`.
 
+## M8.9 — aprovação por digest e branch dedicado
+
+Uma proposta M8.8 concluída pode originar `GitChangeApproval`:
+
+```text
+patch_digest
+   ↓
+pending
+   ↓ confirmação do digest exato
+approved | cancelled
+```
+
+A aprovação não escreve Git.
+
+`create_branch` é uma ação independente e precisa estar na allowlist do handoff, possuir `ExecutorRequest` próprio e receber release explícito. O worker aceita somente nomes `superchat/...`, valida novamente com `git check-ref-format`, cria a ref a partir do `HEAD` local e não faz checkout, commit, push ou rede. Branch existente gera conflito e nunca é sobrescrito.
+
+O ambiente Git é mínimo e não herda credenciais do processo pai.
+
+Veja `docs/GIT_CHANGE_APPROVAL.md`.
+
 ## Worker e proveniência
 
-O worker roda em processo separado da API. `run_tests` usa cópia temporária, ambiente mínimo, timeout e limites de CPU/memória/PIDs/NOFILE/FSIZE quando suportados. O backend container possui contrato com `--network none`, `--read-only`, `--cap-drop ALL` e `no-new-privileges`; o Docker socket nunca é montado.
+O worker roda em processo separado da API. Cada execução `isolated-local` possui `WorkerAttempt` numerado com lease/heartbeat. A API valida `job_digest` e `result_digest` SHA-256 antes de aceitar o resultado. Isso é integridade/proveniência, não assinatura criptográfica.
 
-Cada execução `isolated-local` possui `WorkerAttempt` numerado com lease/heartbeat. A API valida `job_digest` e `result_digest` SHA-256 antes de aceitar o resultado. Isso é verificação de integridade, **não assinatura criptográfica**.
+`run_tests` usa cópia temporária, ambiente mínimo, timeout e limites de CPU/memória/PIDs/NOFILE/FSIZE quando suportados. O contrato container inclui `--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges` e nunca monta Docker socket.
 
 Veja `docs/WORKER_HARDENING.md` e `docs/WORKER_PROVENANCE.md`.
 
-## Recuperação e economia de tokens
+## Recuperação e tokens
 
-No baseline sintético M7.0, o cenário de pressão `minimal` produziu 13.926 tokens candidatos → 1.794 selecionados, com compressão aproximada de 87,12% e `recall@2 = 1,0` no fixture. Esse resultado não é garantia de desempenho em dados reais.
+No baseline sintético M7.0, o cenário de pressão `minimal` reduziu 13.926 tokens candidatos para 1.794 selecionados, cerca de 87,12% de compressão, mantendo `recall@2 = 1,0` no fixture. Não é garantia de desempenho em dados reais.
 
 ```bash
 python scripts/context_benchmark.py benchmarks/context_cases.json
@@ -161,7 +121,7 @@ O repositório é público. Memória real, `.env`, credenciais, conversas, dumps
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-8-ephemeral-diff
+git checkout codex/m8-9-reviewed-git-branch
 cp .env.example .env
 docker compose up --build
 ```
@@ -174,4 +134,4 @@ O executor real permanece desligado até configuração explícita de `EXECUTOR_
 
 ## Próxima fronteira
 
-Depois do M8.8, a próxima etapa deverá persistir uma proposta **já revisada/aprovada** em um branch Git dedicado, mantendo `create_branch`, `create_commit` e `create_pull_request` como autorizações independentes. Merge, deploy e publicação continuam fora da política padrão.
+O M8.10 deverá aplicar uma proposta **já aprovada por digest** em um branch dedicado, detectando drift e revalidando paths/secrets antes da escrita persistente. Aplicar arquivos não criará commit implicitamente: `create_commit`, push/PR, merge e deploy permanecem etapas separadas ou fora da política.

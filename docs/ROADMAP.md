@@ -65,54 +65,51 @@ Status: **concluído**.
 ### M8.5 — adapter local isolado
 Status: **concluído**.
 
-Capacidades reais iniciais: `read_repository` somente metadata e `run_tests` somente preset server-side `pytest`.
-
 ### M8.6 — hardening do worker
 Status: **concluído**.
 
-Worker separado da API, workspace efêmero para testes, limites de recurso, ambiente mínimo, timeout, redaction e contrato container sem rede por padrão.
+Worker separado da API, workspace efêmero, limites de recurso, ambiente mínimo, timeout, redaction e contrato container sem rede por padrão.
 
 ### M8.7 — proveniência e reconciliação do worker
 Status: **concluído na branch `codex/m8-7-worker-provenance`**.
 
-Entregas principais:
-- `WorkerAttempt` persistente e numerado;
-- identidade do worker;
-- `job_digest` e `result_digest` SHA-256;
-- lease/heartbeat;
-- reconciliação `expired/orphaned`;
-- retry explícito com nova tentativa;
-- máximo de tentativas server-side;
-- eventos append-only.
+`WorkerAttempt`, identidade, digests, lease/heartbeat, reconciliação, retry explícito e eventos append-only.
 
 ### M8.8 — alteração efêmera e diff revisável
-Status: **concluído na branch `codex/m8-8-ephemeral-diff` após CI funcional verde**.
+Status: **concluído na branch `codex/m8-8-ephemeral-diff`**.
+
+`modify_worktree` opera somente em cópia temporária, aceita `write_text`/`delete_file`, aplica limites/path policy/redaction e devolve unified diff + `patch_digest`, sem alterar o worktree original.
+
+### M8.9 — aprovação por digest e branch Git dedicado
+Status: **concluído na branch `codex/m8-9-reviewed-git-branch` após CI funcional verde**.
 
 Entregas:
-- `modify_worktree` como primeira escrita real do executor;
-- escrita somente em cópia temporária do worktree;
-- operações permitidas: `write_text` e `delete_file`;
-- nenhum shell, script, executável, argv ou patch arbitrário fornecido pelo cliente;
-- paths relativos POSIX; bloqueio de absoluto, `..`, NUL, backslash e symlink;
-- arquivos binários/non-UTF-8 fora do contrato;
-- limites server-side de arquivos, operações, bytes escritos e patch;
-- hard caps adicionais dentro do worker;
-- unified diff revisável;
-- inventário `added/modified/deleted`;
-- `patch_digest` SHA-256 calculado após redaction;
-- secrets detectáveis bloqueados/redigidos;
-- resultado marcado `external_effects=false` e `workspace_persistence=ephemeral_only`;
-- worktree original permanece sem escrita por design;
-- proveniência, lease e tentativa do M8.7 preservados;
-- documentação `docs/WORKTREE_DIFF.md`.
+- migration `0008_git_change_approvals`;
+- `GitChangeApproval` persistente, uma por proposta M8.8;
+- snapshot mínimo de request/execution/project, `patch_digest`, fingerprint e arquivos alterados;
+- estados `pending`, `approved` e `cancelled`;
+- aprovação exige repetição exata do `patch_digest`;
+- aprovação não produz efeito Git;
+- eventos append-only de preparação, aprovação e cancelamento;
+- `create_branch` como efeito independente sujeito à allowlist, `ExecutorRequest` e release próprios;
+- namespace obrigatório `superchat/`;
+- validação adicional com `git check-ref-format --branch`;
+- branch criado a partir do `HEAD` local observado;
+- branch já existente é conflito e nunca é sobrescrito;
+- nenhum checkout, alteração de arquivo, commit ou push;
+- Git executado por argv fixo, `shell=False`, ambiente mínimo e sem secrets herdados;
+- nenhuma operação de rede no contrato de branch;
+- proveniência e `WorkerAttempt` preservados;
+- documentação `docs/GIT_CHANGE_APPROVAL.md`.
 
 Capacidades reais atuais:
 - `read_repository` → metadata;
 - `run_tests` → pytest;
-- `modify_worktree` → proposta efêmera + diff.
+- `modify_worktree` → proposta efêmera + diff;
+- `create_branch` → branch local `superchat/*` sem checkout/push.
 
 Continuam sem implementação real:
-- `create_branch`;
+- aplicar proposta aprovada no branch;
 - `create_commit`;
 - `create_pull_request`.
 
@@ -124,20 +121,21 @@ Continuam proibidos:
 - escrita externa genérica;
 - shell/comando/binário/argv arbitrário.
 
-### M8.9 — persistência Git de proposta aprovada
+### M8.10 — aplicar proposta aprovada no branch
 Status: **futuro/condicional**.
 
-Antes de persistir qualquer patch no Git:
-- proposta M8.8 deve possuir digest estável e aprovação humana específica;
-- branch deve ser criado por autorização independente;
-- identidade Git do executor deve ser exclusiva e configurada no servidor;
-- aplicar somente o patch aprovado, rejeitando digest divergente;
-- validar novamente paths, secrets, tamanho e estado-base do worktree;
-- detectar drift entre base revisada e base atual;
-- commit deve exigir autorização separada da alteração;
-- push/PR em etapas distintas;
-- imagem de worker/container deve ser pinada por digest antes de qualquer execução de código ligada à persistência Git;
-- merge/deploy/publish permanecem fora.
+Antes de alterar arquivos persistentes:
+- exigir `GitChangeApproval=approved`;
+- reconstruir/revalidar a proposta e exigir o mesmo `patch_digest`;
+- exigir branch `superchat/*` dedicado e verificar seu `base_sha`;
+- detectar drift da base antes de aplicar;
+- aplicar somente arquivos presentes no inventário aprovado;
+- repetir validação de paths, symlinks, secrets, tamanho e UTF-8;
+- mudança deve ocorrer no branch/worktree dedicado, sem commit implícito;
+- produzir novo diff pós-aplicação e provar equivalência com o digest aprovado;
+- rollback seguro em qualquer divergência;
+- `create_commit` permanece autorização/etapa separada;
+- push/PR, merge/deploy/publish continuam fora.
 
 ## Regra de evolução
 
@@ -153,4 +151,6 @@ Não ampliar autonomia antes de existir:
 9. worker separado e auditável;
 10. proveniência/reconciliação;
 11. diff revisável;
-12. aprovação por digest antes de escrita Git persistente.
+12. aprovação por digest;
+13. efeito Git mínimo separado da aplicação de conteúdo;
+14. aplicação somente após prova de digest/base sem drift.
