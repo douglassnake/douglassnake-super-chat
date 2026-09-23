@@ -6,9 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.context_engine import build_context_package
 from app.database import get_db
 from app.github_sync import GitHubAPIError, sync_project_github
+from app.google_context import build_context_with_google
+from app.google_sync import GoogleAPIError, GoogleAuthUnavailable, sync_project_google
 from app.models import ContextItem, Decision, Project, ProjectSource, SessionSummary, Task, utcnow
 from app.schemas import (
     ContextBuildRequest,
@@ -40,6 +41,15 @@ def get_project_or_404(db: Session, project_id: UUID) -> Project:
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+def build_project_context(
+    db: Session,
+    project: Project,
+    query: str,
+    profile: str,
+) -> dict:
+    return build_context_with_google(db, project, query, profile)
 
 
 @router.post("/projects", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
@@ -98,6 +108,12 @@ def create_project_source(
         repository = (payload.external_id or "").strip().strip("/")
         if not repository or "/" not in repository:
             raise HTTPException(status_code=422, detail="GitHub external_id must be owner/repository")
+    if payload.source_type in {"google_drive", "google_calendar"}:
+        if not (payload.external_id or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail=f"{payload.source_type} external_id is required",
+            )
 
     existing_stmt = select(ProjectSource.id).where(
         ProjectSource.project_id == project_id,
@@ -296,7 +312,7 @@ def list_context_items(project_id: UUID, db: Session = Depends(get_db)) -> list[
 @router.post("/context/build", response_model=ContextPackage)
 def build_context(payload: ContextBuildRequest, db: Session = Depends(get_db)) -> dict:
     project = get_project_or_404(db, payload.project_id)
-    return build_context_package(db, project, payload.query, payload.profile)
+    return build_project_context(db, project, payload.query, payload.profile)
 
 
 @router.get("/projects/{project_id}/continue", response_model=ContextPackage)
@@ -304,13 +320,13 @@ def continue_project(
     project_id: UUID,
     profile: ContextProfile = Query(default="standard"),
     query: str = Query(
-        default="continuar projeto status próxima ação decisões tarefas pendências bloqueios commits PR issues actions",
+        default="continuar projeto status próxima ação decisões tarefas pendências bloqueios commits PR issues actions documentos agenda",
         max_length=4000,
     ),
     db: Session = Depends(get_db),
 ) -> dict:
     project = get_project_or_404(db, project_id)
-    return build_context_package(db, project, query, profile)
+    return build_project_context(db, project, query, profile)
 
 
 @router.post("/projects/{project_id}/github/sync", response_model=GitHubSyncResult)
@@ -326,4 +342,22 @@ def sync_github(project_id: UUID, db: Session = Depends(get_db)) -> dict:
     try:
         return sync_project_github(db, project)
     except GitHubAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/google/sync")
+def sync_google(project_id: UUID, db: Session = Depends(get_db)) -> dict:
+    project = get_project_or_404(db, project_id)
+    source_stmt = select(ProjectSource.id).where(
+        ProjectSource.project_id == project_id,
+        ProjectSource.source_type.in_(["google_drive", "google_calendar"]),
+        ProjectSource.is_active.is_(True),
+    )
+    if db.scalar(source_stmt) is None:
+        raise HTTPException(status_code=400, detail="Project has no active Google source")
+    try:
+        return sync_project_google(db, project)
+    except GoogleAuthUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except GoogleAPIError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
