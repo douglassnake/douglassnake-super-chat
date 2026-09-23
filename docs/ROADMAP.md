@@ -25,73 +25,77 @@ Status: **concluído**.
 Task Packs, handoffs, execução/evidências, verificação GitHub, Controlled Executor, adapter isolado, worker endurecido e proveniência/reconciliação.
 
 ### M8.8 — alteração efêmera e diff revisável
-Status: **concluído na branch `codex/m8-8-ephemeral-diff`**.
+Status: **concluído**.
 
-`modify_worktree` opera somente em cópia temporária, aceita `write_text`/`delete_file` e devolve unified diff + `patch_digest` sem alterar o fonte.
+`modify_worktree` opera em cópia temporária e devolve unified diff + `patch_digest` sem alterar o fonte.
 
 ### M8.9 — aprovação por digest e branch Git dedicado
-Status: **concluído na branch `codex/m8-9-reviewed-git-branch`**.
+Status: **concluído**.
 
-`GitChangeApproval` exige confirmação exata do digest. `create_branch` cria somente ref local `superchat/*`, sem checkout, commit, push ou rede e nunca sobrescreve branch existente.
+`GitChangeApproval` exige confirmação exata do digest. `create_branch` cria somente ref local `superchat/*`, sem checkout/push e sem sobrescrita.
 
 ### M8.10 — aplicar proposta aprovada em staging Git
-Status: **concluído na branch `codex/m8-10-apply-approved-change` após CI funcional verde**.
+Status: **concluído**.
+
+`apply_git_change` resolve conteúdo server-side, verifica base/digest e mantém a mudança em worktree Git dedicado não commitado.
+
+### M8.11 — commit controlado do staging aprovado
+Status: **concluído funcionalmente na branch `codex/m8-11-explicit-commit` após suíte completa verde**.
 
 Entregas:
-- nova ação `apply_git_change` na política de handoff/executor;
-- payload público limitado a `approval_id` + `branch_request_id`;
-- resolução server-side de operations, digest, worktree, branch e `base_sha`;
-- exige `GitChangeApproval=approved`;
-- exige `create_branch` concluído no mesmo projeto/worktree;
-- `EXECUTOR_GIT_STAGING_ROOT` privado e administrado pelo servidor;
-- drift de branch detectado antes da criação do staging;
-- worktree Git dedicado criado com argv fixo e sem rede;
-- proposta reconstruída no staging e comparada ao `patch_digest` aprovado antes da escrita;
-- paths, symlinks, UTF-8, secrets e limites revalidados;
-- pós-aplicação recalcula o diff e exige exatamente o mesmo digest;
-- falha pós-criação remove o staging com `git worktree remove --force` + prune;
-- fonte não recebe alteração de conteúdo;
-- sucesso mantém arquivos modificados/untracked no staging sem commit;
-- `HEAD` do staging continua no `base_sha`;
-- resultado registra `git_status`, inventário, digest e flags `commit_created=false`, `push_performed=false`, `pull_request_created=false`;
-- proveniência e `WorkerAttempt` preservados;
-- documentação `docs/APPLY_APPROVED_CHANGE.md`.
+- `create_commit` real no adapter `isolated-local`;
+- payload público limitado a `apply_request_id` + `commit_message`;
+- resolução server-side de staging, branch, `base_sha`, `patch_digest` e inventário;
+- identidade Git exclusiva definida somente no servidor;
+- staging e branch precisam continuar exatamente na base aprovada;
+- inspeção do worktree sem `git diff`/`git status` para evitar filtros de conteúdo;
+- comparação de arquivos rastreados com índice e `hash-object --no-filters`;
+- arquivos adicionais, ignored/untracked extras e alterações pre-staged bloqueiam o commit;
+- índice temporário iniciado com `read-tree base_sha`;
+- somente paths aprovados entram no índice temporário;
+- blobs criados por `hash-object --no-filters`;
+- árvore validada por `diff-tree` contra o inventário aprovado;
+- commit criado com `commit-tree`, sem hooks;
+- ref movida atomicamente com `update-ref <novo> <base>` compare-and-swap;
+- índice do staging sincronizado por `read-tree`, sem `reset --mixed` e sem filtros;
+- pós-verificação de parent, branch, staging limpo e `patch_digest`;
+- rollback da ref quando a pós-verificação falha;
+- ambiente Git sem credenciais herdadas, hooks e fsmonitor desabilitados;
+- teste com pre-commit hook e clean filter maliciosos confirma que nenhum executa;
+- `push_performed=false` e `pull_request_created=false`;
+- documentação `docs/EXPLICIT_COMMIT.md`.
 
 Capacidades reais atuais:
 - `read_repository` → metadata;
 - `run_tests` → pytest;
 - `modify_worktree` → proposta efêmera + diff;
 - `create_branch` → branch local `superchat/*`;
-- `apply_git_change` → staging Git dedicado, não commitado.
+- `apply_git_change` → staging Git dedicado;
+- `create_commit` → commit local controlado.
 
 Continuam sem implementação real:
-- `create_commit`;
+- push remoto;
 - `create_pull_request`.
 
 Continuam proibidos:
 - merge;
 - deploy;
-- publicação;
+- publicação em produção;
 - escrita em Drive/Calendar;
 - escrita externa genérica;
 - shell/comando/binário/argv arbitrário.
 
-### M8.11 — commit controlado do staging aprovado
+### M8.12 — publicação remota controlada
 Status: **futuro/condicional**.
 
-Antes de criar commit:
-- exigir um `apply_git_change` concluído;
-- verificar `staging_id`, branch, `HEAD`, `base_sha` e `patch_digest`;
-- provar que o status/diff atual ainda corresponde à aplicação aprovada;
-- identidade Git de autor/committer definida no servidor, nunca no payload público;
-- mensagem de commit limitada e sanitizada;
-- `git add` restrito ao inventário aprovado;
-- commit criado sem push;
-- registrar `commit_sha` e verificar árvore/parent;
-- nenhuma alteração adicional após aprovação;
-- push/PR continuam etapas independentes;
-- merge/deploy/publish permanecem fora.
+Próximos efeitos deverão permanecer separados:
+1. publicar somente uma branch `superchat/*` já commitada e verificada;
+2. criar pull request somente depois da publicação confirmada;
+3. credencial/remote/repositório devem ser definidos pelo servidor, não pelo agente;
+4. push deve usar atualização não destrutiva e rejeitar remote ref divergente;
+5. PR deve registrar base/head/commit verificados;
+6. merge, deploy e publish de produção continuam fora.
 
 ## Regra de evolução
 
-Cada novo efeito externo deve ter autorização própria, input resolvido pelo servidor, prova de estado anterior, verificação pós-efeito e rollback quando possível. Conteúdo aprovado, branch, aplicação, commit, push/PR e merge são etapas distintas.
+Cada novo efeito externo deve ter autorização própria, input resolvido pelo servidor, prova de estado anterior, verificação pós-efeito e rollback quando possível. Conteúdo aprovado, branch, aplicação, commit, push, PR e merge são etapas distintas.

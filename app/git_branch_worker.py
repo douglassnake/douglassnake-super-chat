@@ -29,12 +29,20 @@ def _validate_branch_name(raw: object) -> str:
 
 
 def _git_env() -> dict[str, str]:
+    # Git receives no parent credentials/global config. Server-side overlays also
+    # disable repository hooks and fsmonitor commands for every controlled Git call.
     env = {
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_CONFIG_COUNT": "2",
+        "GIT_CONFIG_KEY_0": "core.hooksPath",
+        "GIT_CONFIG_VALUE_0": os.devnull,
+        "GIT_CONFIG_KEY_1": "core.fsmonitor",
+        "GIT_CONFIG_VALUE_1": "false",
     }
     if os.name == "nt":
         for key in ("SYSTEMROOT", "WINDIR", "TEMP", "TMP"):
@@ -145,7 +153,7 @@ def execute_create_branch(job: WorkerJob) -> WorkerResult:
             "network_policy": "no_network_operation_by_contract",
             "git_ref_effect": True,
             "external_effects": True,
-            "environment_policy": "minimal_no_parent_secrets",
+            "environment_policy": "minimal_no_parent_secrets_hooks_disabled",
         }
     )
     return WorkerResult(True, result, None)
