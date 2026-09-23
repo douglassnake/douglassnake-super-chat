@@ -8,6 +8,8 @@ O **Super Chat** é a interface operacional do **Segundo Cérebro**: memória pe
 Usuário autenticado
   ↓
 Super Chat Web / API
+  ↓ observabilidade local
+request-id + logs JSON + /ops/*
   ↓
 Task Pack → Handoff → Agent Execution
   ↓
@@ -41,7 +43,7 @@ Cada efeito tem autorização e release próprios. Nenhuma etapa autoriza implic
 
 ## M9.0 — autenticação single-admin
 
-Antes de qualquer deploy externo, o M9.0 protege `/app`, APIs, OpenAPI e endpoints operacionais com sessão server-side.
+O M9.0 protege `/app`, APIs, OpenAPI e endpoints operacionais com sessão server-side.
 
 Características:
 
@@ -49,7 +51,7 @@ Características:
 - token de sessão aleatório e opaco;
 - somente hash do token é persistido em `auth_sessions`;
 - cookie de sessão `HttpOnly` + `SameSite=Strict`;
-- CSRF vinculado à sessão para métodos mutáveis;
+- CSRF double-submit vinculado à sessão para métodos mutáveis;
 - logout revoga a sessão no banco;
 - `production` falha no startup sem autenticação e cookie `Secure`;
 - `GET /health` permanece público e retorna apenas `status`;
@@ -72,6 +74,28 @@ AUTH_COOKIE_SECURE=true
 ```
 
 Produção pressupõe HTTPS. Veja `docs/AUTHENTICATION.md`.
+
+## M9.1 — observabilidade operacional
+
+A API `0.9.1` adiciona observabilidade local sem exportar dados para serviços externos.
+
+Cada resposta HTTP normal recebe `X-Request-ID`. O middleware registra uma linha JSON por requisição contendo apenas método, path sem query string, status, duração, request ID e principal autenticado quando disponível.
+
+Não são registrados body, query string, cookies, `Authorization`, tokens nem mensagens de exceção não tratada.
+
+Endpoints operacionais protegidos:
+
+```text
+GET /ops/status    → readiness do banco, versão, ambiente e uptime
+GET /ops/summary   → estados e sinais agregados
+GET /ops/failures  → falhas recentes sanitizadas
+```
+
+`/health` continua sendo somente liveness público mínimo. `/ops/status` é a readiness detalhada e exige autenticação quando M9.0 está habilitado.
+
+Os sinais incluem leases expirados, aprovações Git pendentes e falhas de execução/request/worker nas últimas 24 horas. Nenhum `payload_json` ou `result_json` é exposto pelos endpoints de observabilidade.
+
+Veja `docs/OBSERVABILITY.md`.
 
 ## Fluxo Git controlado
 
@@ -180,7 +204,7 @@ python scripts/integration_readiness.py
 O check exige:
 
 - grafo Alembic com um único base e um único head;
-- migrations críticas presentes, incluindo `auth_sessions` no M9;
+- migrations críticas presentes, incluindo `auth_sessions`;
 - executores `isolated-local`, `github-pr` e `github-publish` indisponíveis por padrão;
 - produção sem autenticação bloqueada;
 - `merge`, `deploy` e `publish` ainda proibidos globalmente;
@@ -233,4 +257,4 @@ Em `development`, autenticação continua desabilitada por padrão para DX/teste
 
 ## Próxima fronteira
 
-Depois do M9.0, a prioridade é **observabilidade operacional, backend dedicado de credenciais e testes reais de backup/restore no ambiente self-hosted** antes de qualquer capacidade de merge/deploy.
+Depois do M9.1, a prioridade é **M9.2: backend dedicado de credenciais, rotação de segredos e teste real de backup/restore no ambiente self-hosted**, incluindo a política de retenção/rotação de logs do runtime escolhido, antes de qualquer capacidade de merge/deploy.
