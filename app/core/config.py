@@ -93,6 +93,21 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    def model_post_init(self, __context) -> None:
+        # Dynamic import avoids a config<->secret_store import cycle. File values
+        # are copied only into fields already excluded from serialization/repr.
+        if str(self.secret_backend or "settings").strip().lower() != "files":
+            return
+        from app.secret_store import ALLOWED_SECRET_NAMES, FileSecretStore
+
+        if not self.secret_dir:
+            raise ValueError("SECRET_DIR is required when SECRET_BACKEND=files")
+        store = FileSecretStore(self.secret_dir)
+        for name in ALLOWED_SECRET_NAMES:
+            secret = store.acquire(name, required=False)
+            if secret is not None:
+                object.__setattr__(self, name, secret.reveal())
+
 
 @lru_cache
 def get_settings() -> Settings:
