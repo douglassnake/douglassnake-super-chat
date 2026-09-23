@@ -5,6 +5,10 @@ O **Super Chat** é a interface operacional do **Segundo Cérebro**: memória pe
 ## Arquitetura atual
 
 ```text
+Usuário autenticado
+  ↓
+Super Chat Web / API
+  ↓
 Task Pack → Handoff → Agent Execution
   ↓
 Controlled Executor
@@ -34,6 +38,40 @@ Cada efeito tem autorização e release próprios. Nenhuma etapa autoriza implic
 - **M8.13** criação controlada de Pull Request GitHub;
 - **M8.14** publicação autenticada da branch GitHub via credential broker;
 - **M8.15** estabilização, migration smoke e integration readiness.
+
+## M9.0 — autenticação single-admin
+
+Antes de qualquer deploy externo, o M9.0 protege `/app`, APIs, OpenAPI e endpoints operacionais com sessão server-side.
+
+Características:
+
+- senha configurada apenas por hash PBKDF2-SHA256;
+- token de sessão aleatório e opaco;
+- somente hash do token é persistido em `auth_sessions`;
+- cookie de sessão `HttpOnly` + `SameSite=Strict`;
+- CSRF vinculado à sessão para métodos mutáveis;
+- logout revoga a sessão no banco;
+- `production` falha no startup sem autenticação e cookie `Secure`;
+- `GET /health` permanece público e retorna apenas `status`;
+- nenhum novo efeito externo é habilitado.
+
+Gere o hash localmente:
+
+```bash
+python scripts/generate_password_hash.py
+```
+
+Configuração mínima de produção:
+
+```env
+ENVIRONMENT=production
+AUTH_ENABLED=true
+AUTH_USERNAME=admin
+AUTH_PASSWORD_HASH=<pbkdf2_sha256$...>
+AUTH_COOKIE_SECURE=true
+```
+
+Produção pressupõe HTTPS. Veja `docs/AUTHENTICATION.md`.
 
 ## Fluxo Git controlado
 
@@ -133,7 +171,7 @@ Veja `docs/CONTROLLED_GITHUB_PUBLICATION.md`.
 
 ## M8.15 — estabilização e integration readiness
 
-O M8.15 não adiciona novo efeito externo. Ele transforma guardrails de integração em checks executáveis:
+O M8.15 transforma guardrails de integração em checks executáveis:
 
 ```bash
 python scripts/integration_readiness.py
@@ -142,7 +180,9 @@ python scripts/integration_readiness.py
 O check exige:
 
 - grafo Alembic com um único base e um único head;
+- migrations críticas presentes, incluindo `auth_sessions` no M9;
 - executores `isolated-local`, `github-pr` e `github-publish` indisponíveis por padrão;
+- produção sem autenticação bloqueada;
 - `merge`, `deploy` e `publish` ainda proibidos globalmente;
 - versão da API coerente;
 - credenciais e `DATABASE_URL` fora de `Settings.model_dump()` / `model_dump_json()`.
@@ -154,7 +194,7 @@ alembic upgrade head
 python scripts/integration_readiness.py --database
 ```
 
-e confirma o head da migration e a presença das tabelas críticas. Veja `docs/INTEGRATION_READINESS.md` para a ordem segura de integração da pilha de PRs.
+e confirma o head da migration e a presença das tabelas críticas.
 
 ## Segurança e credenciais
 
@@ -164,9 +204,9 @@ Os adapters de efeitos externos permanecem **desligados por padrão**. As creden
 - `EXECUTOR_GITHUB_WRITE_TOKEN` → criação controlada de PR;
 - `EXECUTOR_GITHUB_PUBLISH_TOKEN` → publicação controlada de branch.
 
-Esses segredos permanecem acessíveis somente em memória aos consumidores autorizados e são excluídos da serialização de `Settings`. Credenciais Google sensíveis e `DATABASE_URL` recebem a mesma proteção contra serialização acidental.
+`AUTH_PASSWORD_HASH`, tokens GitHub, credenciais Google e `DATABASE_URL` são excluídos da serialização de `Settings`.
 
-O repositório é público. `.env`, memória real, tokens, conversas, worktrees privados, staging e bancos nunca devem ser versionados.
+O repositório é público. `.env`, memória real, tokens, conversas, worktrees privados, staging, bancos e hashes reais da instalação nunca devem ser versionados.
 
 ## Recuperação e tokens
 
@@ -181,7 +221,6 @@ python scripts/context_benchmark.py benchmarks/context_cases.json
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-15-integration-readiness
 cp .env.example .env
 docker compose up --build
 ```
@@ -190,6 +229,8 @@ Interface: `http://localhost:8000/app/`
 
 OpenAPI: `http://localhost:8000/docs`
 
+Em `development`, autenticação continua desabilitada por padrão para DX/testes. Para ambiente exposto, use `ENVIRONMENT=production`, HTTPS e a configuração M9.0.
+
 ## Próxima fronteira
 
-A prioridade agora é **integrar a pilha de PRs de baixo para cima usando os checkpoints do M8.15**, sem auto-merge da cadeia. Depois da integração, autenticação da interface, observabilidade e testes de recuperação no ambiente self-hosted vêm antes de qualquer capacidade de merge/deploy.
+Depois do M9.0, a prioridade é **observabilidade operacional, backend dedicado de credenciais e testes reais de backup/restore no ambiente self-hosted** antes de qualquer capacidade de merge/deploy.
