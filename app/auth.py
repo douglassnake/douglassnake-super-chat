@@ -97,6 +97,10 @@ def validate_security_settings(settings: Settings) -> None:
             raise RuntimeError("AUTH_ENABLED=true is required in production")
         if not settings.auth_cookie_secure:
             raise RuntimeError("AUTH_COOKIE_SECURE=true is required in production")
+        if settings.secret_backend != "files":
+            raise RuntimeError("SECRET_BACKEND=files is required in production")
+        if not settings.secret_dir:
+            raise RuntimeError("SECRET_DIR is required in production")
 
 
 def create_session(db: Session, settings: Settings) -> tuple[AuthSession, str, str]:
