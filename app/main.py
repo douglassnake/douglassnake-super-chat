@@ -16,7 +16,7 @@ from app.routes import router
 from app.session_routes import router as session_router
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="0.8.4")
+app = FastAPI(title=settings.app_name, version="0.8.5")
 
 
 @app.get("/health")

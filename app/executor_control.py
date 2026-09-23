@@ -72,6 +72,13 @@ class ManualExecutorAdapter:
 def resolve_executor_adapter(adapter_type: str) -> ExecutorAdapter:
     if adapter_type == "manual":
         return ManualExecutorAdapter()
+    if adapter_type == "isolated-local":
+        # Lazy import avoids a circular dependency: the isolated adapter consumes
+        # ExecutorCommand/ExecutorOutcome from this module.
+        from app.core.config import get_settings
+        from app.isolated_executor import IsolatedLocalExecutorAdapter
+
+        return IsolatedLocalExecutorAdapter.from_settings(get_settings())
     raise ExecutorUnavailable(f"Executor adapter {adapter_type!r} is not configured")
 
 

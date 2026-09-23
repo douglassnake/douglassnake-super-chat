@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     google_drive_api_url: str = "https://www.googleapis.com/drive/v3"
     google_calendar_api_url: str = "https://www.googleapis.com/calendar/v3"
 
+    # M8.5: execução local isolada. Permanece desligada por padrão.
+    executor_isolated_enabled: bool = False
+    executor_worktree_root: str | None = None
+    executor_timeout_seconds: float = 60.0
+    executor_max_timeout_seconds: float = 300.0
+    executor_output_max_bytes: int = 65_536
+    executor_env_allowlist: str = "SYSTEMROOT,TEMP,TMP,TMPDIR"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

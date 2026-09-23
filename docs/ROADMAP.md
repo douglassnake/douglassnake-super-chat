@@ -60,8 +60,6 @@ Status: **concluído na branch `codex/m8-agent-task-packs`**.
 
 `AgentTaskPack` persistente, objetivo, critérios de aceite explícitos, guardrails, contexto, fontes, budget, fingerprint, preview, aprovação humana, testes e documentação.
 
-`approved` significa pronto para handoff, não autorização para execução.
-
 ### M8.1 — handoff assistido e auditável
 Status: **concluído na branch `codex/m8-1-agent-handoffs`**.
 
@@ -70,48 +68,54 @@ Status: **concluído na branch `codex/m8-1-agent-handoffs`**.
 ### M8.2 — acompanhamento de execução e evidências
 Status: **concluído na branch `codex/m8-2-execution-tracking`**.
 
-`AgentExecution`, eventos append-only, progresso, referências técnicas, evidência por critério e gate de conclusão. A execução só pode ser concluída quando a evidência mais recente de todos os critérios é `passed`.
+`AgentExecution`, eventos append-only, progresso, referências técnicas, evidência por critério e gate de conclusão.
 
 ### M8.3 — verificação externa GitHub somente leitura
 Status: **concluído na branch `codex/m8-3-github-verification`**.
 
-Entregas:
-- commit, PR e check-runs lidos por conector somente leitura;
-- repositório derivado de fonte GitHub ativa do projeto;
-- estados `verified`, `mismatch`, `not_found`, `unavailable`;
-- evento `external_verification`;
-- regra explícita `checks_green`;
-- nenhum critério alterado sem mapeamento explícito;
-- nenhum recurso GitHub criado ou modificado.
+Commit, PR e check-runs somente leitura, proveniência, estados normalizados, `external_verification` e regra explícita `checks_green`.
 
 ### M8.4 — executor controlado
 Status: **concluído na branch `codex/m8-4-controlled-executor`**.
 
-Entregas:
-- `ExecutorRequest` persistente vinculado a `AgentExecution`;
-- migration `0006_executor_requests`;
-- estados `prepared`, `released`, `running`, `completed`, `failed`, `cancelled`;
-- ação obrigatoriamente pertencente à política global e à allowlist do handoff;
-- fingerprint determinístico por execução/ação/adapter/payload;
-- prevenção de request idêntica na mesma execução;
-- release explícito antes da execução;
-- adapter interface injetável;
-- adapter padrão `manual` inerte (`available = false`);
-- payload sem shell/comando arbitrário;
-- rejeição recursiva de `argv`, `cmd`, `command`, `executable`, `script`, `shell`, `shell_command`;
-- redaction de payload, notas, resultado e erro;
-- eventos append-only `executor_request`, `executor_released`, `executor_started`, `executor_result`;
-- requests terminais protegidos contra replay;
-- request concluído não gera evidência automaticamente e não conclui o `AgentExecution`;
-- endpoints de criação, listagem, leitura, release, execução e cancelamento;
-- testes offline com adapter fake;
-- documentação `docs/CONTROLLED_EXECUTOR.md`.
+`ExecutorRequest`, migration `0006_executor_requests`, política global + allowlist de handoff, release específico, adapter interface, anti-replay, redaction, eventos append-only e rejeição de shell/comando arbitrário.
 
-Ações reconhecidas pela política inicial:
+Ações reconhecidas pela política:
 - `read_context`;
 - `read_repository`;
 - `modify_worktree`;
 - `run_tests`;
+- `create_branch`;
+- `create_commit`;
+- `create_pull_request`.
+
+### M8.5 — adapter local isolado
+Status: **concluído na branch `codex/m8-5-isolated-adapter`**.
+
+Entregas:
+- adapter opcional `isolated-local`, desabilitado por padrão;
+- root de worktrees configurável e obrigatório;
+- resolução canônica de paths;
+- bloqueio de path traversal e symlink escape;
+- primeiro contrato real `read_repository` limitado a `scope=metadata`;
+- primeiro contrato real `run_tests` limitado ao preset server-side `pytest`;
+- cliente não escolhe executável, argv ou flags arbitrárias;
+- subprocesso com `shell=False` e `stdin=DEVNULL`;
+- `cwd` restrito ao worktree validado;
+- ambiente mínimo com allowlist e filtro adicional de nomes sensíveis;
+- timeout limitado por máximo global;
+- encerramento do grupo de processos em timeout quando suportado;
+- captura de stdout/stderr em arquivo temporário;
+- limite do volume persistido por stream;
+- redaction de saída antes da persistência;
+- ações sem contrato real retornam `unsupported` sem efeito externo;
+- testes reais de pytest em diretório temporário;
+- teste de timeout, traversal, symlink escape, ambiente mínimo, truncamento e integração via API;
+- documentação `docs/ISOLATED_EXECUTOR.md`.
+
+Ações que continuam **sem implementação real** no adapter `isolated-local`:
+- `read_context`;
+- `modify_worktree`;
 - `create_branch`;
 - `create_commit`;
 - `create_pull_request`.
@@ -122,25 +126,26 @@ Continuam proibidos por padrão:
 - publicação;
 - escrita em Drive/Calendar;
 - escrita genérica em serviços externos;
-- shell/comando arbitrário.
+- shell/comando/binário/argv arbitrário.
 
-### M8.5 — adapter real isolado
+### M8.6 — hardening do worker
 Status: **futuro/condicional**.
 
-Somente após definir o ambiente de execução e as políticas específicas por ação. Um adapter real deverá incluir:
-- worker isolado;
-- diretório de trabalho restrito ao projeto autorizado;
-- validação de paths;
-- timeout por ação;
-- limites de CPU/memória/processos quando aplicável;
-- sem shell arbitrário;
-- contratos semânticos específicos para cada ação;
-- captura e auditoria de artefatos/resultados;
-- idempotência/replay protection;
-- confirmação separada para qualquer ampliação de efeito externo;
-- merge, deploy e publicação ainda fora da política padrão.
+Antes de ampliar as ações reais, endurecer o ambiente com:
+- worker/processo dedicado separado da API;
+- isolamento por container ou mecanismo equivalente;
+- cgroups/limites fortes de CPU, memória, PIDs e filesystem quando disponíveis;
+- quota de disco/artefatos;
+- política de rede (idealmente sem egress por padrão);
+- identidade de execução não privilegiada;
+- lifecycle e limpeza de worktrees temporários;
+- observabilidade e auditoria do worker;
+- testes de escape/abuso;
+- nenhum secret no ambiente padrão.
 
-Antes de M8.5 também permanece recomendada a calibração privada do M7.0 com consultas reais para decidir M7.1 com dados.
+Somente depois do hardening considerar contratos reais separados para `modify_worktree`, `create_branch`, `create_commit` e `create_pull_request`.
+
+Antes do M8.6 permanece recomendada a calibração privada do M7.0 com consultas reais para decidir M7.1 com dados.
 
 ## Regra de evolução
 
@@ -153,4 +158,5 @@ Não adicionar complexidade de IA ou autonomia antes de existir:
 6. autorização humana explícita para efeitos externos;
 7. evidência verificável antes de marcar execução como concluída;
 8. política específica para cada nova capacidade de escrita;
-9. isolamento e limites de recurso antes de executar código real.
+9. isolamento e limites de recurso antes de executar código real;
+10. hardening do worker antes de ampliar efeitos externos reais.
