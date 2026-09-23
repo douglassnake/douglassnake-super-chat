@@ -14,6 +14,7 @@ ALLOWED_HANDOFF_ACTIONS = {
     "create_branch",
     "apply_git_change",
     "create_commit",
+    "publish_branch",
     "create_pull_request",
 }
 
