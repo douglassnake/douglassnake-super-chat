@@ -15,6 +15,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
+from app.auth import validate_security_settings
 from app.core.config import Settings
 from app.executor_control import EXECUTOR_FORBIDDEN_ACTIONS
 from app.github_pr_executor import GitHubPullRequestExecutorAdapter
@@ -23,9 +24,10 @@ from app.isolated_executor import IsolatedLocalExecutorAdapter
 from app.main import app
 
 
-EXPECTED_API_VERSION = "0.8.15"
+EXPECTED_API_VERSION = "0.9.0"
 SENSITIVE_SETTINGS = {
     "database_url",
+    "auth_password_hash",
     "github_token",
     "google_access_token",
     "google_client_secret",
@@ -43,6 +45,7 @@ REQUIRED_MIGRATED_TABLES = {
     "executor_requests",
     "worker_attempts",
     "git_change_approvals",
+    "auth_sessions",
 }
 
 
@@ -91,6 +94,8 @@ def _check_database_migration() -> dict[str, Any]:
 def _check_fail_closed_defaults() -> dict[str, Any]:
     fields = Settings.model_fields
     expected = {
+        "auth_enabled": False,
+        "auth_cookie_secure": False,
         "executor_isolated_enabled": False,
         "executor_github_write_enabled": False,
         "executor_github_publish_enabled": False,
@@ -104,9 +109,21 @@ def _check_fail_closed_defaults() -> dict[str, Any]:
     return {"ok": observed == expected, "observed": observed}
 
 
+def _check_production_auth_boundary() -> dict[str, Any]:
+    blocked = False
+    error = None
+    try:
+        validate_security_settings(Settings(_env_file=None, environment="production", auth_enabled=False))
+    except RuntimeError as exc:
+        blocked = True
+        error = str(exc)
+    return {"ok": blocked, "unauthenticated_production_blocked": blocked, "reason": error}
+
+
 def _check_secret_serialization() -> dict[str, Any]:
     sentinels = {
         "database_url": "postgresql+psycopg://user:DB_SECRET@localhost/db",
+        "auth_password_hash": "AUTH_HASH_SECRET_0",
         "github_token": "READ_SECRET_1",
         "google_access_token": "GOOGLE_ACCESS_SECRET_2",
         "google_client_secret": "GOOGLE_CLIENT_SECRET_3",
@@ -159,6 +176,7 @@ def build_report(*, check_database: bool = False) -> dict[str, Any]:
     checks = {
         "migration_graph": _check_migration_graph(),
         "fail_closed_defaults": _check_fail_closed_defaults(),
+        "production_auth_boundary": _check_production_auth_boundary(),
         "secret_serialization": _check_secret_serialization(),
         "adapters_fail_closed": _check_adapters_fail_closed(),
         "policy_boundary": _check_policy_boundary(),
