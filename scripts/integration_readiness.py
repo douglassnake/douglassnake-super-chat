@@ -24,7 +24,7 @@ from app.isolated_executor import IsolatedLocalExecutorAdapter
 from app.main import app
 
 
-EXPECTED_API_VERSION = "0.9.0"
+EXPECTED_API_VERSION = "0.9.1"
 SENSITIVE_SETTINGS = {
     "database_url",
     "auth_password_hash",
