@@ -1,4 +1,8 @@
 .env
+.secrets/
+secrets/
+backups/
+*.dump
 .venv/
 venv/
 __pycache__/
