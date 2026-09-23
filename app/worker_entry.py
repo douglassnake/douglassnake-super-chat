@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timezone
 
 from app.agent_handoff import sanitize_value
+from app.worker_modify import execute_modify_worktree
 from app.worker_provenance import build_worker_provenance
 from app.worker_runtime import WorkerJobError, execute_worker_job, loads_job
 
@@ -15,13 +16,19 @@ def main() -> int:
     job = None
     try:
         job = loads_job(raw)
-        outcome = execute_worker_job(job)
+        if job.action == "modify_worktree":
+            outcome = execute_modify_worktree(job)
+        else:
+            outcome = execute_worker_job(job)
         payload = outcome.to_dict()
     except (WorkerJobError, json.JSONDecodeError, ValueError, OSError) as exc:
         payload = sanitize_value(
             {
                 "ok": False,
-                "result": {"status": "rejected", "termination_reason": "worker_validation"},
+                "result": {
+                    "status": "rejected",
+                    "termination_reason": "worker_validation",
+                },
                 "error": str(exc),
             }
         )
@@ -29,7 +36,10 @@ def main() -> int:
         payload = sanitize_value(
             {
                 "ok": False,
-                "result": {"status": "failed", "termination_reason": "worker_internal_error"},
+                "result": {
+                    "status": "failed",
+                    "termination_reason": "worker_internal_error",
+                },
                 "error": f"Worker internal error: {exc}",
             }
         )
