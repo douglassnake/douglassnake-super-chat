@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     executor_container_runtime: str = "docker"
     executor_container_image: str = "python:3.13-slim"
 
+    # M8.7: proveniência/reconciliação. O cliente não escolhe estes limites.
+    executor_worker_lease_seconds: int = 120
+    executor_worker_max_attempts: int = 3
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

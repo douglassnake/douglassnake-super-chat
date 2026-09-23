@@ -23,6 +23,9 @@ Controlled Executor
   ↓ release por ação
 Isolated Local Adapter
   ↓
+WorkerAttempt
+leased → running → completed | failed
+  ↓
 WorkerJob JSON v1
   ↓
 ProcessWorkerClient
@@ -30,6 +33,9 @@ ProcessWorkerClient
 Worker Runtime
   ├── subprocess-sandbox
   └── container opcional
+  ↓
+Proveniência
+worker_id + job_digest + result_digest
 ```
 
 A autorização é separada por camada:
@@ -38,13 +44,13 @@ A autorização é separada por camada:
 Task Pack approved       = pronto para handoff
 Handoff released         = ações listadas explicitamente foram liberadas
 ExecutorRequest released = uma ação específica foi liberada para um adapter
-Worker job               = execução técnica da ação já autorizada
+WorkerAttempt             = tentativa auditável com lease/retry
 Execution completed      = critérios de aceite possuem evidência explícita passed
 ```
 
 Nenhuma dessas etapas autoriza implicitamente merge, deploy, publicação ou escrita em serviços externos.
 
-## Marcos M1–M8.6
+## Marcos M1–M8.7
 
 - **M1 — Memória operacional:** projetos, decisões, tarefas, resumos, PostgreSQL, Alembic e Docker.
 - **M2 — Context Engine:** ranking, deduplicação, compactação, orçamento de tokens e `continue`.
@@ -59,11 +65,12 @@ Nenhuma dessas etapas autoriza implicitamente merge, deploy, publicação ou esc
 - **M8.3 — GitHub Verification:** commit/PR/check-runs verificados por leitura e evidência de CI somente por regra explícita.
 - **M8.4 — Controlled Executor:** request de ação, release específico, política global, anti-replay e adapter injetável.
 - **M8.5 — Isolated Local Adapter:** execução real limitada de `run_tests` e leitura de metadados dentro de worktree restrito.
-- **M8.6 — Worker Hardening:** processo de worker separado da API, workspace efêmero, limites de recurso auditáveis e backend de container com rede negada por padrão.
+- **M8.6 — Worker Hardening:** worker separado da API, workspace efêmero, limites de recurso e container com rede negada por padrão.
+- **M8.7 — Worker Provenance & Reconciliation:** identidade do worker, digests, leases, heartbeat, reconciliação de órfãos e retry controlado.
 
 ## Política de ações
 
-Ações reconhecidas pelo sistema:
+Ações reconhecidas:
 
 ```text
 read_context
@@ -91,53 +98,19 @@ create_commit
 create_pull_request
 ```
 
-Continuam proibidos por padrão: merge, deploy, publicação, escrita em Drive/Calendar, escrita genérica em serviços externos e shell/comando arbitrário.
+Continuam proibidos: merge, deploy, publicação, escrita em Drive/Calendar, escrita genérica em serviços externos e shell/comando arbitrário.
 
-## Controlled Executor e adapter isolado
+## Controlled Executor e Worker Hardening
 
 Um `ExecutorRequest` precisa estar na política global, na allowlist do handoff e vinculado a uma execução `running`. Depois ainda exige release explícito.
 
 O adapter `manual` permanece inerte. O adapter `isolated-local` é **desabilitado por padrão** e só fica disponível com root privado de worktrees configurado.
 
-`run_tests` é montado internamente como:
+Para `run_tests`, o worker recebe apenas um contrato semântico e monta internamente o preset `pytest`; o cliente não escolhe shell, executável ou argv arbitrário.
 
-```text
-<python-do-servidor> -m pytest -q <target-validado>
-```
+O M8.6 executa testes em **cópia temporária do worktree**, com processo separado da API, ambiente mínimo, timeout, truncamento/redaction de saída e limites de CPU/memória/PIDs/NOFILE/FSIZE quando suportados.
 
-O cliente não escolhe binário, argv ou flags arbitrárias.
-
-Veja `docs/CONTROLLED_EXECUTOR.md` e `docs/ISOLATED_EXECUTOR.md`.
-
-## Worker Hardening — M8.6
-
-O M8.6 move a execução técnica para um **processo de worker separado da API**. A comunicação usa `WorkerJob` JSON versionado; o worker recebe ambiente mínimo e não herda secrets por padrão.
-
-Para `run_tests`, o worker:
-
-1. valida root/worktree por path canônico;
-2. rejeita symlink que escape do worktree;
-3. cria cópia temporária por request;
-4. executa o preset apenas nessa cópia;
-5. aplica timeout e limites suportados;
-6. trunca/redige stdout e stderr;
-7. remove o workspace temporário ao final.
-
-### Backend `subprocess-sandbox`
-
-Aplica, em POSIX quando disponível:
-
-- CPU (`RLIMIT_CPU`);
-- memória (`RLIMIT_AS`);
-- PIDs (`RLIMIT_NPROC`);
-- arquivos abertos (`RLIMIT_NOFILE`);
-- tamanho de arquivo (`RLIMIT_FSIZE`).
-
-Ele **não isola rede**; isso aparece explicitamente no resultado como `network_policy=not_isolated_by_subprocess_backend`.
-
-### Backend `container`
-
-Opcional e administrado pelo servidor. O contrato monta o runtime com:
+No backend `container`, o contrato inclui:
 
 ```text
 --network none
@@ -147,12 +120,48 @@ Opcional e administrado pelo servidor. O contrato monta o runtime com:
 --pids-limit ...
 --memory ...
 --cpus 1.0
---tmpfs /tmp:rw,noexec,nosuid
 ```
 
-Somente a cópia temporária do worktree é montada em `/workspace`. O Docker socket nunca é montado.
+O Docker socket nunca é montado.
 
-Veja `docs/WORKER_HARDENING.md`.
+Veja `docs/CONTROLLED_EXECUTOR.md`, `docs/ISOLATED_EXECUTOR.md` e `docs/WORKER_HARDENING.md`.
+
+## Worker Provenance & Reconciliation — M8.7
+
+Cada execução `isolated-local` passa a possuir um `WorkerAttempt` persistente e numerado.
+
+```text
+leased → running → completed | failed
+   |          |
+   |          └→ orphaned
+   └→ expired
+```
+
+O processo do worker devolve um envelope de proveniência com:
+
+- `worker_id`;
+- PID;
+- fingerprint não reversível do host;
+- backend e schema do job;
+- `job_digest` SHA-256;
+- `result_digest` SHA-256;
+- timestamps de início e fim.
+
+A API recalcula `job_digest` e `result_digest` antes de aceitar o resultado. Isso fornece verificação de integridade do transporte/processo; **não é uma assinatura criptográfica com chave privada**.
+
+### Lease e heartbeat
+
+Uma tentativa possui lease e heartbeat. O token bruto é devolvido somente uma vez; no banco fica apenas seu SHA-256. A lease efetiva nunca é menor que o maior timeout permitido mais uma margem operacional, evitando reconciliação prematura de uma execução síncrona válida.
+
+### Reconciliação
+
+`POST /worker-attempts/reconcile` transforma leases vencidas em `expired` ou `orphaned`, registra evento auditável e nunca inventa sucesso.
+
+### Retry
+
+Retry não é replay. `POST /executor-requests/{id}/retry` só funciona após falha, respeita limite server-side e cria uma **nova** tentativa na próxima execução. As tentativas anteriores permanecem imutáveis para auditoria.
+
+Veja `docs/WORKER_PROVENANCE.md`.
 
 ## Recuperação e economia de tokens
 
@@ -182,7 +191,7 @@ O repositório é público. Memória real, `.env`, credenciais, conversas, dumps
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-6-worker-hardening
+git checkout codex/m8-7-worker-provenance
 cp .env.example .env
 docker compose up --build
 ```
@@ -195,4 +204,6 @@ O executor real continua desligado até configuração explícita de `EXECUTOR_I
 
 ## Próxima fronteira
 
-Antes de escrita real em código/Git, ainda faltam contratos específicos e auditáveis para `modify_worktree`, `create_branch`, `create_commit` e `create_pull_request`, além de proveniência forte do worker e reconciliação de jobs órfãos. Merge, deploy e publicação continuam fora da política padrão.
+O próximo marco é o **M8.8 — preparação para escrita Git controlada**. Antes de habilitar `modify_worktree`, `create_branch`, `create_commit` ou `create_pull_request`, o sistema deve produzir diff/patch revisável, aplicar allowlist/denylist de paths, limitar quantidade/tamanho de mudanças, usar identidade Git exclusiva e exigir nova aprovação humana antes de persistir alterações.
+
+Merge, deploy e publicação continuam fora da política padrão.

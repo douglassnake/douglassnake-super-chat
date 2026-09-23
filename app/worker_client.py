@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from app.agent_task_pack import redact_secrets
+from app.worker_provenance import worker_job_digest, worker_result_digest
 from app.worker_runtime import WorkerJob, WorkerResult, dumps_job
 
 
@@ -33,6 +34,28 @@ class ProcessWorkerClient:
                 if value:
                     env[key] = value
         return env
+
+    @staticmethod
+    def _verify_provenance(job: WorkerJob, result: WorkerResult) -> None:
+        provenance = dict(result.result.get("provenance") or {})
+        if not provenance:
+            raise WorkerClientError("Worker result is missing provenance")
+        # The worker reconstructs WorkerJob from JSON. Normalize through the same
+        # parser before hashing so equivalent values such as 5 and 5.0 do not
+        # produce different digests merely because of Python runtime types.
+        normalized_job = WorkerJob.from_dict(job.to_dict()).to_dict()
+        expected_job = worker_job_digest(normalized_job)
+        if provenance.get("job_digest") != expected_job:
+            raise WorkerClientError("Worker job digest mismatch")
+        expected_result = worker_result_digest(
+            ok=result.ok,
+            result=result.result,
+            error=result.error,
+        )
+        if provenance.get("result_digest") != expected_result:
+            raise WorkerClientError("Worker result digest mismatch")
+        if not provenance.get("worker_id"):
+            raise WorkerClientError("Worker result is missing worker identity")
 
     def execute(self, job: WorkerJob) -> WorkerResult:
         timeout = max(1.0, job.limits.timeout_seconds + self.grace_seconds)
@@ -66,4 +89,6 @@ class ProcessWorkerClient:
             ) from exc
         if not isinstance(payload, dict):
             raise WorkerClientError("Worker result must be a JSON object")
-        return WorkerResult.from_dict(payload)
+        result = WorkerResult.from_dict(payload)
+        self._verify_provenance(job, result)
+        return result
