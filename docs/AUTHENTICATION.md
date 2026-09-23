@@ -11,10 +11,13 @@ O M9.0 protege a interface web e as APIs do Super Chat antes de qualquer exposi�
 - o token CSRF também é aleatório e somente seu hash é persistido;
 - o cookie de sessão é `HttpOnly` e `SameSite=Strict`;
 - o cookie CSRF é `SameSite=Strict` e vinculado à sessão server-side;
-- requisições mutáveis sem CSRF válido são rejeitadas;
+- toda requisição `POST`, `PUT`, `PATCH` ou `DELETE` autenticada exige `X-CSRF-Token` idêntico ao cookie CSRF ligado à sessão;
+- requisições mutáveis sem cookie, sem header ou com valores divergentes são rejeitadas com `403`;
 - `Sec-Fetch-Site: cross-site` é rejeitado em métodos mutáveis;
 - logout revoga a sessão no banco antes de apagar os cookies;
 - sessões expiram server-side mesmo que um cookie antigo ainda exista.
+
+O frontend oficial injeta `X-CSRF-Token` automaticamente nas mutações same-origin. `POST /auth/login` é a única mutação pública e não depende de uma sessão prévia.
 
 ## Desenvolvimento
 
@@ -69,8 +72,8 @@ O TTL padrão é 12 horas. O servidor atualiza `last_seen_at` de forma limitada 
 
 - `GET /login` — tela de login;
 - `POST /auth/login` — autenticação e emissão de sessão;
-- `GET /auth/status` — status mínimo da sessão;
-- `POST /auth/logout` — revogação da sessão;
+- `GET /auth/status` — status mínimo da sessão e nome do cookie CSRF para o frontend;
+- `POST /auth/logout` — revogação da sessão, exigindo sessão + CSRF;
 - `GET /health` — único health check público e mínimo.
 
 Com `AUTH_ENABLED=true`, `/app`, OpenAPI e endpoints operacionais exigem sessão válida. Acesso HTML não autenticado é redirecionado para `/login`; API não autenticada retorna `401`.
