@@ -3,7 +3,7 @@
 ## M0–M6 — Fundação, memória, contexto, interface e conectores
 Status: **concluído**.
 
-Incluem memória operacional, Context Engine, GitHub somente leitura, Session Memory, interface web e Google Drive/Calendar somente leitura.
+Memória operacional, Context Engine, GitHub somente leitura, Session Memory, interface web e Google Drive/Calendar somente leitura.
 
 ## M7 — Qualidade de recuperação
 
@@ -22,94 +22,95 @@ Embeddings/pgvector somente se benchmark privado demonstrar ganho mensurável.
 ### M8.0–M8.7
 Status: **concluído**.
 
-Task Packs, handoffs, execução/evidências, verificação GitHub, Controlled Executor, adapter isolado, worker endurecido e proveniência/reconciliação.
+Task Packs, handoffs, tracking, verificação GitHub, executor, isolamento, worker endurecido e proveniência/reconciliação.
 
-### M8.8 — alteração efêmera e diff revisável
+### M8.8–M8.12
 Status: **concluído**.
 
-`modify_worktree` opera em cópia temporária e devolve unified diff + `patch_digest` sem alterar o fonte.
-
-### M8.9 — aprovação por digest e branch Git dedicado
-Status: **concluído**.
-
-`GitChangeApproval` exige confirmação exata do digest. `create_branch` cria somente ref local `superchat/*`, sem checkout/push e sem sobrescrita.
-
-### M8.10 — aplicar proposta aprovada em staging Git
-Status: **concluído**.
-
-`apply_git_change` resolve conteúdo server-side, verifica base/digest e mantém a mudança em worktree Git dedicado não commitado.
-
-### M8.11 — commit controlado
-Status: **concluído**.
-
-`create_commit` usa Git plumbing, índice temporário, blobs sem filtros e `update-ref` compare-and-swap. Hooks/filtros ficam fora do caminho; nenhuma publicação remota ocorre implicitamente.
-
-### M8.12 — publicação remota bare controlada
-Status: **concluído**.
-
-`publish_branch` exige autorização/release próprios, recebe publicamente apenas `commit_request_id`, usa remote bare local server-side, transporta objetos sem `git push`/`receive-pack` e cria a primeira ref `superchat/*` por `update-ref` CAS contra zero OID. Nenhuma sobrescrita ou force update.
+- M8.8: alteração efêmera + diff;
+- M8.9: aprovação por digest + branch local;
+- M8.10: aplicação em staging Git;
+- M8.11: commit local por plumbing;
+- M8.12: primeira publicação em bare local por CAS.
 
 ### M8.13 — Pull Request GitHub controlado
-Status: **concluído funcionalmente na branch `codex/m8-13-controlled-pull-request` após suíte completa + benchmark verdes**.
+Status: **concluído**.
+
+`create_pull_request` é efeito independente, usa adapter `github-pr`, resolve repositório/base/head/SHA server-side, exige head GitHub exato antes do PR e mantém token fora dos contratos persistidos. Testes são offline.
+
+### M8.14 — publicação GitHub autenticada via credential broker
+Status: **concluído funcionalmente na branch `codex/m8-14-github-publish-broker` após suíte completa + benchmark verdes**.
 
 Entregas:
-- `create_pull_request` mantém autorização e release independentes;
-- adapter dedicado `github-pr`, separado do worker `isolated-local`;
-- payload público limitado a `publish_request_id`, `title` e `body`;
-- repository, ProjectSource, base branch, head branch, head SHA e draft policy resolvidos server-side;
-- origem exige `publish_branch` M8.12 concluído no mesmo projeto;
-- `remote_publication_performed=true` e `remote_sha == commit_sha` são obrigatórios;
-- branch precisa manter namespace `superchat/*`;
-- ProjectSource GitHub ativa precisa corresponder ao repositório de escrita configurado;
-- writer GitHub desativado por padrão;
-- token de escrita separado do token de leitura e nunca serializado no `ExecutorRequest`, `WorkerJob`, fingerprint, log ou resultado;
-- M8.13 não publica branch no GitHub implicitamente;
-- antes de criar PR, GitHub precisa reportar `head_branch` exatamente em `head_sha`;
-- branch ausente retorna `head_not_published_to_github` sem efeito;
-- head divergente retorna `head_drift_detected` sem efeito;
-- PR aberto já existente bloqueia nova criação;
-- POST do PR seguido de pós-verificação de repository/base/head/head SHA;
-- falha após criação exige reconciliação manual em vez de marcar sucesso;
-- replay interno para a mesma publicação é bloqueado;
-- testes usam writer fake/offline e nunca criam PR externo;
-- documentação `docs/CONTROLLED_PULL_REQUEST.md`;
-- API `0.8.13`.
+- nova ação `publish_github_branch`;
+- handoff, `ExecutorRequest` e release próprios;
+- adapter `github-publish` separado do worker;
+- payload público limitado a `publish_request_id`;
+- linhagem exige `publish_branch` M8.12 concluído e verificado;
+- repository, ProjectSource, head branch e head SHA resolvidos server-side;
+- branch restrita a `superchat/*`;
+- bare local M8.12 é revalidado antes de adquirir a credencial;
+- drift local bloqueia o efeito antes do broker;
+- `CredentialBroker` + `SecretLease` efêmero em memória;
+- backend inicial de broker por Settings substituível futuramente por Vault/KMS/OIDC;
+- token de publicação separado do token de PR;
+- token nunca entra em payload, fingerprint, `ExecutorRequest`, `WorkerJob`, log ou resultado;
+- publisher real desativado por padrão;
+- transporte autenticado usa URL sem token + `GIT_ASKPASS` efêmero;
+- commit exato é publicado primeiro em ref temporária única `superchat-staging/<request-id>`;
+- ref temporária usa compare-and-swap de ausência por `--force-with-lease=<ref>:`;
+- SHA temporário é verificado antes da ref final;
+- ref final `superchat/*` é criada pela API GitHub somente se ausente;
+- branch final já existente bloqueia primeira publicação;
+- pós-verificação exige head SHA exato;
+- ref temporária é removida em cleanup;
+- cleanup falho retorna `temporary_ref_cleanup_failed` e exige reconciliação manual;
+- resultado de sucesso registra `github_publication_performed=true`, `pull_request_created=false`, `merge_performed=false`, `deploy_performed=false`;
+- testes usam broker/publisher fake, sem rede ou segredo real;
+- API `0.8.14`;
+- documentação `docs/CONTROLLED_GITHUB_PUBLICATION.md`.
 
-Capacidades reais atuais:
-- `read_repository` → metadata;
-- `run_tests` → pytest;
-- `modify_worktree` → proposta efêmera + diff;
-- `create_branch` → branch local `superchat/*`;
-- `apply_git_change` → staging Git dedicado;
-- `create_commit` → commit local controlado;
-- `publish_branch` → primeira publicação em bare local controlado;
-- `create_pull_request` → PR GitHub somente quando o head já existe no GitHub no SHA esperado e o writer está explicitamente habilitado.
+Fluxo real atual:
 
-Continuam sem implementação real:
-- publicação autenticada da branch para GitHub;
-- atualização de ref GitHub existente;
-- credential broker para publicação Git remota.
+```text
+modify_worktree
+ ↓
+aprovação digest
+ ↓
+create_branch
+ ↓
+apply_git_change
+ ↓
+create_commit
+ ↓
+publish_branch            # bare local
+ ↓
+publish_github_branch     # GitHub autenticado
+ ↓
+create_pull_request        # PR GitHub
+```
 
-Continuam proibidos:
+Cada seta externa continua exigindo release próprio.
+
+Continuam fora da política:
+- atualização de branch GitHub existente;
+- force push da branch final;
 - merge;
 - deploy;
 - publicação em produção;
-- escrita em Drive/Calendar;
-- escrita externa genérica;
-- shell/comando/binário/argv arbitrário.
+- shell/comando/binário/argv arbitrário;
+- escrita externa genérica.
 
-### M8.14 — publicação GitHub autenticada via credential broker
-Status: **futuro/condicional**.
+## Próxima fase — estabilização operacional
 
-Próximos requisitos:
-1. efeito separado para publicar uma branch já commitada/verificada no repositório GitHub configurado;
-2. credencial obtida por broker e nunca incluída no `WorkerJob`/request persistido;
-3. head/ref/repository resolvidos server-side;
-4. atualização não destrutiva com SHA remoto esperado e sem force implícito;
-5. pós-verificação exige GitHub head SHA exato;
-6. nenhum PR/merge/deploy implícito;
-7. M8.13 deve continuar apenas criando PR depois de o head GitHub existir.
+Antes de qualquer merge/deploy automatizado, priorizar:
+1. revisar e integrar a pilha de PRs de forma ordenada;
+2. autenticação/controle de acesso da interface web;
+3. observabilidade, métricas e alertas do executor;
+4. gestão de credenciais por backend dedicado (Vault/KMS/OIDC) em produção;
+5. testes de recuperação/reconciliação em ambiente self-hosted;
+6. somente depois avaliar novos efeitos externos.
 
 ## Regra de evolução
 
-Cada novo efeito externo deve ter autorização própria, input resolvido pelo servidor, prova de estado anterior, verificação pós-efeito e rollback quando possível. Conteúdo aprovado, branch, aplicação, commit, publicação remota, publicação GitHub autenticada, PR e merge são etapas distintas.
+Cada efeito externo deve ter autorização própria, input resolvido pelo servidor, prova de estado anterior, verificação pós-efeito, segredo fora do estado persistido e reconciliação explícita quando rollback total não for possível.

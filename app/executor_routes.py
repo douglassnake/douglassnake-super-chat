@@ -42,6 +42,10 @@ from app.github_pr_resolver import (
     GitHubPRResolutionError,
     resolve_create_pull_request_payload,
 )
+from app.github_publish_resolver import (
+    GitHubPublishResolutionError,
+    resolve_publish_github_branch_payload,
+)
 from app.models import utcnow
 from app.worker_attempts import create_attempt, finalize_attempt, mark_attempt_running
 from app.worker_models import WorkerAttempt
@@ -175,6 +179,17 @@ def create_executor_request(
         except GitPublishResolutionError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         cleaned_payload = bounded_payload(resolved, field_name="Resolved Git publish payload")
+    elif payload.action == "publish_github_branch":
+        if payload.adapter_type != "github-publish":
+            raise HTTPException(
+                status_code=422,
+                detail="publish_github_branch requires the github-publish adapter",
+            )
+        try:
+            resolved = resolve_publish_github_branch_payload(db, execution, payload.payload)
+        except GitHubPublishResolutionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        cleaned_payload = bounded_payload(resolved, field_name="Resolved GitHub publish payload")
     elif payload.action == "create_pull_request":
         if payload.adapter_type != "github-pr":
             raise HTTPException(
