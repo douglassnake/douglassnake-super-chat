@@ -70,6 +70,7 @@ def auth_status(request: Request, response: Response) -> dict:
         "username": principal.get("username") if principal else None,
         "role": principal.get("role") if principal else None,
         "expires_at": session.expires_at if session is not None else None,
+        "csrf_cookie_name": settings.auth_csrf_cookie_name,
     }
 
 
