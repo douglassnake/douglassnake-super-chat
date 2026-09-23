@@ -1,96 +1,201 @@
 # Douglas Snake — Super Chat
 
-Interface central do **Segundo Cérebro**: um sistema de memória, contexto e execução que conecta projetos, GitHub, documentos e IA sem depender do histórico bruto de conversas.
+Interface central do **Segundo Cérebro**: memória operacional, recuperação seletiva de contexto e integração com fontes técnicas sem depender do histórico bruto das conversas.
 
 ## Objetivo
 
-Permitir que um projeto possa ficar semanas sem atividade e seja retomado em poucos minutos, com contexto suficiente para responder:
+Permitir que um projeto fique semanas sem atividade e seja retomado em poucos minutos, respondendo com contexto rastreável:
 
 - onde paramos;
 - o que já foi decidido;
 - qual é o estado atual;
 - o que está pendente;
 - qual é a próxima ação;
-- quais fontes sustentam esse contexto.
+- o que mudou tecnicamente;
+- quais fontes sustentam o contexto.
 
-## Papel do Super Chat
-
-O Super Chat é a interface inteligente do Segundo Cérebro. Ele não substitui as fontes oficiais; ele as indexa, resume, relaciona e recupera sob demanda.
+## Arquitetura atual
 
 ```text
 Usuário
   ↓
-Super Chat
+Super Chat API
   ↓
 Context Engine
-  ├── Memória operacional (PostgreSQL)
-  ├── GitHub (fonte técnica)
-  ├── Google Drive (fonte documental)
-  └── Calendar / integrações
+  ├── PostgreSQL
+  │    ├── projetos
+  │    ├── decisões
+  │    ├── tarefas
+  │    ├── resumos
+  │    ├── context_items
+  │    └── events
+  ├── GitHub Connector (somente leitura)
+  │    ├── commits
+  │    ├── PRs
+  │    ├── Issues
+  │    └── Actions
+  └── futuras fontes: Drive / Calendar
   ↓
-Pacote de contexto mínimo relevante
+Pacote mínimo de memória
   ↓
-Modelo de IA
-  ↓
-Resposta / próxima ação
+Modelo de IA / agente
 ```
 
-## M1 — Memória operacional
+## Estado dos marcos
 
-O M1 entrega a primeira API executável do Segundo Cérebro:
+### M1 — Memória operacional
 
+Implementado:
 - FastAPI;
 - PostgreSQL + SQLAlchemy 2;
-- migrations Alembic;
+- Alembic;
 - projetos, decisões, tarefas e resumos;
-- entidades preparadas para fontes, eventos e itens de contexto;
-- snapshot consolidado de cada projeto;
+- snapshot consolidado;
 - Docker Compose;
 - testes automatizados.
 
-### Executar com Docker
+### M2 — Context Engine v1
 
-Pré-requisito: Docker com Compose.
+Implementado:
+- perfis `minimal`, `standard` e `deep`;
+- ranking determinístico;
+- deduplicação;
+- orçamento estimado de tokens;
+- compactação de itens grandes;
+- rastreabilidade de fontes;
+- auditoria em `context_runs`;
+- comando/API `continue`.
+
+Orçamentos atuais de memória injetada:
+
+| Perfil | Limite |
+|---|---:|
+| `minimal` | 1.800 tokens |
+| `standard` | 5.000 tokens |
+| `deep` | 15.000 tokens |
+
+### M3 — GitHub Connector
+
+Em implementação na branch `codex/m3-github-connector`:
+- vínculo projeto ↔ repositório;
+- leitura somente de GitHub;
+- commits recentes;
+- PRs abertos;
+- Issues abertas;
+- Actions recentes;
+- normalização para `events`;
+- sincronização idempotente;
+- eventos GitHub selecionáveis pelo Context Engine.
+
+## Executar com Docker
 
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m1-operational-memory
+git checkout codex/m3-github-connector
+cp .env.example .env
 
 docker compose up --build
 ```
 
-A API ficará disponível em:
+API:
 
 ```text
 http://localhost:8000
 ```
 
-Documentação OpenAPI:
+OpenAPI:
 
 ```text
 http://localhost:8000/docs
 ```
 
-Health check:
+Health:
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-O container da API executa `alembic upgrade head` antes de iniciar o Uvicorn.
+## GitHub Connector
 
-### Configuração
+Para repositórios públicos, a API pode funcionar sem token, sujeita aos limites públicos do GitHub.
 
-Para customizar credenciais locais:
+Para repositórios privados ou maior limite de API, configure localmente:
 
-```bash
-cp .env.example .env
+```dotenv
+GITHUB_TOKEN=seu_token_local
 ```
 
-Nunca versionar `.env`, tokens, chaves ou dados pessoais. O repositório é público.
+O token é lido apenas do ambiente e usado no header de autenticação. Ele **não deve ser salvo no banco, em eventos, logs de contexto ou no repositório**.
 
-### Executar testes
+Exemplo de fonte:
+
+```json
+{
+  "source_type": "github",
+  "external_id": "owner/repository",
+  "url": "https://github.com/owner/repository",
+  "label": "Código principal"
+}
+```
+
+Depois de vincular a fonte:
+
+```text
+POST /projects/{project_id}/github/sync
+```
+
+A sincronização transforma os dados técnicos em eventos compactos. O código-fonte do repositório não é copiado para o banco.
+
+## Endpoints principais
+
+```text
+GET    /health
+
+POST   /projects
+GET    /projects
+GET    /projects/{project_id}
+PATCH  /projects/{project_id}
+GET    /projects/{project_id}/snapshot
+
+POST   /projects/{project_id}/decisions
+GET    /projects/{project_id}/decisions
+POST   /projects/{project_id}/tasks
+GET    /projects/{project_id}/tasks
+PATCH  /tasks/{task_id}
+POST   /projects/{project_id}/summaries
+
+POST   /projects/{project_id}/context-items
+GET    /projects/{project_id}/context-items
+POST   /context/build
+GET    /projects/{project_id}/continue
+
+POST   /projects/{project_id}/sources
+GET    /projects/{project_id}/sources
+POST   /projects/{project_id}/github/sync
+```
+
+## Exemplo: continuar projeto
+
+```text
+GET /projects/{project_id}/continue?profile=standard
+```
+
+O Context Engine pode devolver uma combinação compacta de:
+- status e próxima ação;
+- resumos recentes;
+- decisões ativas;
+- tarefas pendentes;
+- fatos/notas recuperáveis;
+- commits, PRs, Issues e Actions relevantes.
+
+Ele informa também:
+- tokens candidatos;
+- tokens selecionados;
+- quantidade de itens selecionados;
+- fontes utilizadas.
+
+## Testes
 
 ```bash
 python -m venv .venv
@@ -100,66 +205,27 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-Os testes usam SQLite em memória e dados fictícios; não precisam do banco de produção.
+A suíte usa SQLite em memória e dados fictícios. Os testes do GitHub usam um leitor simulado e não dependem da rede nem de credenciais reais.
 
-## Endpoints M1
+## Privacidade
 
-```text
-GET    /health
-POST   /projects
-GET    /projects
-GET    /projects/{project_id}
-PATCH  /projects/{project_id}
-POST   /projects/{project_id}/decisions
-GET    /projects/{project_id}/decisions
-POST   /projects/{project_id}/tasks
-GET    /projects/{project_id}/tasks
-PATCH  /tasks/{task_id}
-POST   /projects/{project_id}/summaries
-GET    /projects/{project_id}/snapshot
-```
+Este repositório é público. Portanto:
+- não versionar `.env`;
+- não versionar tokens ou senhas;
+- não versionar conversas pessoais;
+- não versionar dumps reais da memória operacional;
+- não versionar documentos privados;
+- usar apenas dados fictícios nos testes.
 
-O endpoint `snapshot` é a base para o futuro comando **continuar projeto**.
+A memória real deve ficar no PostgreSQL da instalação privada.
 
-Exemplo conceitual:
+## Documentação
 
-```json
-{
-  "project": {
-    "name": "MeuNegocioIA",
-    "status": "M2.6",
-    "next_action": "Implementar confirmação financeira"
-  },
-  "summary": {},
-  "decisions": [],
-  "open_tasks": [],
-  "generated_at": "..."
-}
-```
+- `docs/ARCHITECTURE.md`
+- `docs/DATA_MODEL.md`
+- `docs/CONTEXT_ENGINE.md`
+- `docs/ROADMAP.md`
 
-## Princípios
+## Próximo marco
 
-1. **Contexto mínimo suficiente** — não carregar histórico completo quando um resumo estruturado basta.
-2. **Fonte rastreável** — cada fato relevante deve apontar para sua origem.
-3. **Memória externa ao modelo** — trocar o modelo de IA não pode apagar a memória do sistema.
-4. **Separação público/privado** — este repositório contém apenas código, arquitetura, templates e documentação não sensível.
-5. **Atualização incremental** — cada sessão produz um delta: decisões, mudanças, pendências e próxima ação.
-6. **Human-readable first** — contexto importante deve permanecer legível por humanos e por agentes.
-
-## Camadas de memória
-
-- **PostgreSQL:** estado operacional, tarefas, decisões, relações, resumos e metadados.
-- **Arquivos estruturados:** projeção legível do contexto de cada projeto.
-- **GitHub:** código, commits, branches, PRs, Issues, Actions e documentação técnica.
-- **Google Drive:** documentos, PDFs, Word, planilhas e arquivos oficiais.
-
-## Context Engine
-
-O Context Engine será desenvolvido no M2 e montará pacotes de contexto em níveis:
-
-- **mínimo:** ~1–2k tokens;
-- **padrão:** ~3–6k tokens;
-- **profundo:** ~10–20k tokens;
-- **histórico ampliado:** somente quando necessário.
-
-Veja `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `docs/CONTEXT_ENGINE.md` e `docs/ROADMAP.md`.
+Após o M3, o M4 será a **Session Memory**: transformar uma sessão longa em um `SessionDelta` pequeno, contendo decisões, tarefas, alterações de status e próxima ação para reutilização futura.

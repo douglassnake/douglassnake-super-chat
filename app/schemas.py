@@ -124,6 +124,44 @@ class ProjectSnapshot(BaseModel):
     generated_at: datetime
 
 
+class ProjectSourceCreate(BaseModel):
+    source_type: str = Field(min_length=1, max_length=40)
+    external_id: str | None = Field(default=None, max_length=255)
+    url: str | None = None
+    label: str = Field(min_length=1, max_length=255)
+    metadata_json: dict = Field(default_factory=dict)
+    is_active: bool = True
+
+
+class ProjectSourceRead(ORMModel):
+    id: UUID
+    project_id: UUID
+    source_type: str
+    external_id: str | None
+    url: str | None
+    label: str
+    metadata_json: dict
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class GitHubSyncSourceResult(BaseModel):
+    repository: str
+    default_branch: str | None
+    created_events: int
+    skipped_events: int
+
+
+class GitHubSyncResult(BaseModel):
+    project_id: UUID
+    source_count: int
+    created_events: int
+    skipped_events: int
+    sources: list[GitHubSyncSourceResult]
+    synced_at: datetime
+
+
 class ContextItemCreate(BaseModel):
     kind: str = Field(min_length=1, max_length=50)
     title: str | None = Field(default=None, max_length=255)
