@@ -84,7 +84,7 @@ Continuam fora do M9.0:
 - RBAC granular.
 
 ### M9.1 — observabilidade operacional
-Status: **implementado funcionalmente na branch `codex/m9-1-operational-observability`; CI funcional verde antes do fechamento documental**.
+Status: **concluído e integrado em `main`**.
 
 Entregas:
 - API `0.9.1`;
@@ -100,26 +100,33 @@ Entregas:
 - nenhum serviço de telemetria externo;
 - nenhum novo efeito externo habilitado.
 
-Validação funcional:
-- pytest: sucesso;
-- benchmark CLI: sucesso;
-- integration-readiness: sucesso;
-- PostgreSQL 17 + Alembic smoke: sucesso.
-
-Veja `docs/OBSERVABILITY.md`.
-
 ### M9.2 — credenciais dedicadas e recuperação self-hosted
-Status: **não iniciado**.
+Status: **implementado funcionalmente na branch `codex/m9-2-self-hosted-recovery`; aguardando CI final/PR**.
 
-Prioridades:
-- backend de segredos dedicado fora do banco operacional;
-- rotação de credenciais;
-- runbook de backup/restore;
-- teste real de recuperação em ambiente self-hosted;
-- política de retenção/rotação de logs no runtime escolhido.
+Entregas:
+- API `0.9.2`;
+- `SecretStore` allowlisted com backend `settings` para desenvolvimento e `files` para produção;
+- `FileSecretStore` somente leitura, sem symlinks, com limites de tamanho e permissões POSIX restritas;
+- rotação observada em nova aquisição por substituição atômica de arquivo;
+- backend `files` exclusivo: sem fallback silencioso para `.env`/settings;
+- `production` exige `SECRET_BACKEND=files` e `SECRET_DIR`;
+- broker de publicação GitHub integrado ao secret store sem persistir segredo;
+- scripts de backup/restore PostgreSQL;
+- backup custom-format com diretório privado, manifesto, tamanho, Alembic head e SHA-256;
+- restore somente para banco explicitamente vazio/descartável e com confirmação explícita;
+- verificação pós-restore do Alembic head e tabelas críticas;
+- senha PostgreSQL passada por ambiente e não por argv;
+- CI executa backup → restore em PostgreSQL 17 descartável e valida dado sentinela;
+- nenhum novo efeito externo do Controlled Executor habilitado.
+
+Checkpoint operacional ainda obrigatório antes de deploy externo:
+- executar backup/restore real no ZimaOS/NAS alvo;
+- definir destino físico secundário e política de retenção;
+- validar permissões do diretório real de secrets e procedimento de rotação;
+- validar rotação/retensão de logs no runtime escolhido.
 
 ## Regra de evolução
 
 Cada efeito externo deve ter autorização própria, input resolvido pelo servidor, prova de estado anterior, verificação pós-efeito, segredo fora do estado persistido e reconciliação explícita quando rollback total não for possível.
 
-Nenhum deploy externo deve ocorrer antes de M9.0 estar integrado, CI verde, HTTPS/reverse proxy estarem configurados e os procedimentos de backup/restore do M9.2 terem sido testados no ambiente alvo.
+Nenhum deploy externo deve ocorrer antes de M9.2 estar integrado, CI verde, HTTPS/reverse proxy estarem configurados e o procedimento de backup/restore ter sido testado no ambiente self-hosted alvo.
