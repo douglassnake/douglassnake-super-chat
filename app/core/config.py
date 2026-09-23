@@ -94,8 +94,9 @@ class Settings(BaseSettings):
     )
 
     def model_post_init(self, __context) -> None:
-        # Dynamic import avoids a config<->secret_store import cycle. File values
-        # are copied only into fields already excluded from serialization/repr.
+        # Dynamic import avoids a config<->secret_store import cycle. In `files`
+        # mode there is deliberately NO fallback to environment/.env values for
+        # allowlisted secrets: files are the exclusive source of secret material.
         if str(self.secret_backend or "settings").strip().lower() != "files":
             return
         from app.secret_store import ALLOWED_SECRET_NAMES, FileSecretStore
@@ -103,6 +104,8 @@ class Settings(BaseSettings):
         if not self.secret_dir:
             raise ValueError("SECRET_DIR is required when SECRET_BACKEND=files")
         store = FileSecretStore(self.secret_dir)
+        for name in ALLOWED_SECRET_NAMES:
+            object.__setattr__(self, name, None)
         for name in ALLOWED_SECRET_NAMES:
             secret = store.acquire(name, required=False)
             if secret is not None:
