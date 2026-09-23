@@ -143,14 +143,12 @@ def csrf_valid(request: Request, session: AuthSession, settings: Settings) -> bo
     if request.headers.get("sec-fetch-site", "").lower() == "cross-site":
         return False
     raw_csrf = request.cookies.get(settings.auth_csrf_cookie_name)
-    if not raw_csrf:
+    supplied = request.headers.get("x-csrf-token")
+    if not raw_csrf or not supplied:
         return False
     if not hmac.compare_digest(token_hash(raw_csrf), session.csrf_token_hash):
         return False
-    supplied = request.headers.get("x-csrf-token")
-    if supplied is not None and not hmac.compare_digest(supplied, raw_csrf):
-        return False
-    return True
+    return hmac.compare_digest(supplied, raw_csrf)
 
 
 def _wants_html(request: Request) -> bool:
