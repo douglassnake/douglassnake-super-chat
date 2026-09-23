@@ -32,7 +32,8 @@ Cada efeito tem autorização e release próprios. Nenhuma etapa autoriza implic
 - **M8.11** commit local por Git plumbing;
 - **M8.12** publicação em bare local sem `git push`/`receive-pack`;
 - **M8.13** criação controlada de Pull Request GitHub;
-- **M8.14** publicação autenticada da branch GitHub via credential broker.
+- **M8.14** publicação autenticada da branch GitHub via credential broker;
+- **M8.15** estabilização, migration smoke e integration readiness.
 
 ## Fluxo Git controlado
 
@@ -130,9 +131,40 @@ O transporte autenticado usa `GIT_ASKPASS` efêmero e URL sem token. A ref tempo
 
 Veja `docs/CONTROLLED_GITHUB_PUBLICATION.md`.
 
+## M8.15 — estabilização e integration readiness
+
+O M8.15 não adiciona novo efeito externo. Ele transforma guardrails de integração em checks executáveis:
+
+```bash
+python scripts/integration_readiness.py
+```
+
+O check exige:
+
+- grafo Alembic com um único base e um único head;
+- executores `isolated-local`, `github-pr` e `github-publish` indisponíveis por padrão;
+- `merge`, `deploy` e `publish` ainda proibidos globalmente;
+- versão da API coerente;
+- credenciais e `DATABASE_URL` fora de `Settings.model_dump()` / `model_dump_json()`.
+
+O GitHub Actions também inicia **PostgreSQL 17 limpo**, executa:
+
+```bash
+alembic upgrade head
+python scripts/integration_readiness.py --database
+```
+
+e confirma o head da migration e a presença das tabelas críticas. Veja `docs/INTEGRATION_READINESS.md` para a ordem segura de integração da pilha de PRs.
+
 ## Segurança e credenciais
 
-Os adapters de efeitos externos permanecem **desligados por padrão**. Tokens de publicação GitHub e criação de PR são configurações privadas distintas, permitindo menor privilégio.
+Os adapters de efeitos externos permanecem **desligados por padrão**. As credenciais GitHub continuam separadas por finalidade:
+
+- `GITHUB_TOKEN` → leitura/sincronização;
+- `EXECUTOR_GITHUB_WRITE_TOKEN` → criação controlada de PR;
+- `EXECUTOR_GITHUB_PUBLISH_TOKEN` → publicação controlada de branch.
+
+Esses segredos permanecem acessíveis somente em memória aos consumidores autorizados e são excluídos da serialização de `Settings`. Credenciais Google sensíveis e `DATABASE_URL` recebem a mesma proteção contra serialização acidental.
 
 O repositório é público. `.env`, memória real, tokens, conversas, worktrees privados, staging e bancos nunca devem ser versionados.
 
@@ -149,7 +181,7 @@ python scripts/context_benchmark.py benchmarks/context_cases.json
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-14-github-publish-broker
+git checkout codex/m8-15-integration-readiness
 cp .env.example .env
 docker compose up --build
 ```
@@ -160,4 +192,4 @@ OpenAPI: `http://localhost:8000/docs`
 
 ## Próxima fronteira
 
-A partir daqui o fluxo técnico chega até PR sem merge automático. O próximo trabalho deve priorizar **revisão/integração da pilha de PRs, autenticação da interface e observabilidade operacional** antes de considerar qualquer capacidade de merge/deploy.
+A prioridade agora é **integrar a pilha de PRs de baixo para cima usando os checkpoints do M8.15**, sem auto-merge da cadeia. Depois da integração, autenticação da interface, observabilidade e testes de recuperação no ambiente self-hosted vêm antes de qualquer capacidade de merge/deploy.
