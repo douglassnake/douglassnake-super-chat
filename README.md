@@ -33,12 +33,15 @@ Agent Task Pack
         ↓
 preview → pending → aprovação humana → approved
         ↓
-Handoff para Codex / agente
+Agent Handoff
+prepared → release explícito → released
+        ↓
+completed | failed | cancelled
 ```
 
-Um `AgentTaskPack` aprovado está pronto para handoff, mas **não autoriza por si só merge, deploy, publicação ou escrita em serviços externos**.
+Um `AgentTaskPack` aprovado está **pronto para handoff**, mas não autoriza execução. O M8.1 separa a liberação operacional: somente um `AgentHandoff` em `released` libera as ações explicitamente listadas no próprio handoff.
 
-## Marcos M1–M8.0
+## Marcos M1–M8.1
 
 - **M1 — Memória operacional:** projetos, decisões, tarefas, resumos, PostgreSQL, Alembic e Docker.
 - **M2 — Context Engine:** ranking, deduplicação, compactação, orçamento de tokens e `continue`.
@@ -48,6 +51,7 @@ Um `AgentTaskPack` aprovado está pronto para handoff, mas **não autoriza por s
 - **M6 — Google Context:** Drive sob demanda + Calendar normalizado em eventos.
 - **M7.0 — Retrieval Benchmark:** precision/recall, cobertura, compressão, latência e baseline reproduzível.
 - **M8.0 — Agent Task Packs:** preparação rastreável de tarefas para agentes com critérios de aceite, guardrails, redaction de secrets e aprovação humana.
+- **M8.1 — Agent Handoffs:** envelope de entrega auditável, permissões explícitas, release separado e registro de conclusão/falha/cancelamento.
 
 ## Agent Task Packs
 
@@ -59,27 +63,53 @@ Estados:
 preview
    ↓
 pending
-   ├── approve → approved
+   ├── approve → approved (pronto para handoff)
    └── cancel  → cancelled
+```
+
+No nível do pack:
+
+```text
+ready_for_handoff = true   # somente quando approved
+authorized_for_execution = false
 ```
 
 O pack inclui snapshot do projeto, objetivo, critérios de aceite, restrições, áreas sugeridas pelo solicitante, contexto selecionado, referências de origem, orçamento de tokens e fingerprint SHA-256.
 
-Antes de persistir/exportar, o sistema aplica redaction determinística para padrões de credenciais, bearer tokens, prefixes conhecidos e parâmetros sensíveis em URLs. A proteção é complementar: secrets reais continuam proibidos no repositório e não devem ser deliberadamente inseridos no contexto.
+Veja `docs/AGENT_TASK_PACKS.md`.
 
-Endpoints:
+## Agent Handoffs
+
+Um handoff só pode nascer de um Task Pack `approved`. Ele registra executor, alvo, fingerprint do pack, ações permitidas e trilha temporal.
+
+Fluxo:
 
 ```text
-POST /agent-task-packs/preview
-POST /agent-task-packs
-GET  /agent-task-packs/{pack_id}
-GET  /projects/{project_id}/agent-task-packs
-POST /agent-task-packs/{pack_id}/approve
-POST /agent-task-packs/{pack_id}/cancel
-GET  /agent-task-packs/{pack_id}/markdown
+prepared
+   ↓ release explícito
+released
+   ├── complete → completed
+   ├── fail     → failed
+   └── cancel   → cancelled
 ```
 
-Veja `docs/AGENT_TASK_PACKS.md`.
+Allowlist do M8.1:
+
+```text
+read_context
+read_repository
+modify_worktree
+run_tests
+create_branch
+create_commit
+create_pull_request
+```
+
+Merge, deploy, publicação e escrita em Drive/Calendar ou outros serviços externos nunca são autorizados implicitamente pelo handoff. Os endpoints do M8.1 **não executam** essas ações; registram apenas o envelope, a liberação e o resultado.
+
+O Markdown de handoff recupera o contexto selecionado do Task Pack original e valida o fingerprint congelado antes da exportação.
+
+Veja `docs/AGENT_HANDOFFS.md`.
 
 ## Recuperação e economia de tokens
 
@@ -166,7 +196,7 @@ Se uma fonte Drive estiver vinculada mas OAuth não estiver disponível, o coman
 ```bash
 git clone https://github.com/douglassnake/douglassnake-super-chat.git
 cd douglassnake-super-chat
-git checkout codex/m8-agent-task-packs
+git checkout codex/m8-1-agent-handoffs
 cp .env.example .env
 docker compose up --build
 ```
@@ -200,6 +230,15 @@ GET    /agent-task-packs/{pack_id}
 POST   /agent-task-packs/{pack_id}/approve
 POST   /agent-task-packs/{pack_id}/cancel
 GET    /agent-task-packs/{pack_id}/markdown
+
+POST   /agent-task-packs/{pack_id}/handoffs
+GET    /agent-task-packs/{pack_id}/handoffs
+GET    /agent-handoffs/{handoff_id}
+POST   /agent-handoffs/{handoff_id}/release
+POST   /agent-handoffs/{handoff_id}/complete
+POST   /agent-handoffs/{handoff_id}/fail
+POST   /agent-handoffs/{handoff_id}/cancel
+GET    /agent-handoffs/{handoff_id}/markdown
 ```
 
 ## Privacidade
@@ -210,4 +249,4 @@ O repositório é público. Código, templates e dados fictícios podem ser vers
 
 O **M7.1** (embeddings/pgvector) continua condicional a um benchmark privado com consultas reais.
 
-Após M8.0, a automação deve evoluir em incrementos com autorização explícita: primeiro handoff assistido/auditável para agentes; depois, se necessário, acompanhamento de execução. Merge, deploy, publicação e escrita externa continuam exigindo políticas de autorização próprias.
+O próximo incremento de automação é o **M8.2 — acompanhamento de execução**, mantendo a separação entre contexto, aprovação do Task Pack, release do handoff e autorização específica para qualquer efeito externo. Merge, deploy e publicação continuam fora do padrão automático.
