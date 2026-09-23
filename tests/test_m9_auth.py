@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -81,7 +82,7 @@ def test_password_hash_roundtrip_and_serialization() -> None:
     assert encoded not in settings.model_dump_json()
 
 
-def test_production_auth_is_fail_closed() -> None:
+def test_production_auth_is_fail_closed(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="AUTH_ENABLED"):
         validate_security_settings(Settings(_env_file=None, environment="production", auth_enabled=False))
 
@@ -97,15 +98,34 @@ def test_production_auth_is_fail_closed() -> None:
             )
         )
 
-    validate_security_settings(
-        Settings(
-            _env_file=None,
-            environment="production",
-            auth_enabled=True,
-            auth_password_hash=password_hash,
-            auth_cookie_secure=True,
+    with pytest.raises(RuntimeError, match="SECRET_BACKEND=files"):
+        validate_security_settings(
+            Settings(
+                _env_file=None,
+                environment="production",
+                auth_enabled=True,
+                auth_password_hash=password_hash,
+                auth_cookie_secure=True,
+            )
         )
+
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir(mode=0o700)
+    password_file = secret_dir / "auth_password_hash"
+    password_file.write_text(password_hash + "\n", encoding="utf-8")
+    password_file.chmod(0o600)
+
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        auth_enabled=True,
+        auth_password_hash="must-be-ignored",
+        auth_cookie_secure=True,
+        secret_backend="files",
+        secret_dir=str(secret_dir),
     )
+    validate_security_settings(settings)
+    assert settings.auth_password_hash == password_hash
 
 
 def test_authentication_session_csrf_and_logout(auth_client) -> None:
