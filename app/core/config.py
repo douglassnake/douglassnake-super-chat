@@ -13,6 +13,11 @@ class Settings(BaseSettings):
         repr=False,
     )
 
+    # M9.2: backend dedicado para segredos de aplicação. `settings` mantém
+    # compatibilidade local; `files` lê arquivos privados montados fora do repo/DB.
+    secret_backend: str = "settings"
+    secret_dir: str | None = None
+
     # M9.0: autenticação self-hosted single-admin. Desenvolvimento continua
     # explicitamente permissivo por padrão; produção é validada fail-closed.
     auth_enabled: bool = False
