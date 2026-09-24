@@ -15,7 +15,7 @@ from app.agent_handoff import sanitize_value
 from app.credential_broker import (
     CredentialBroker,
     CredentialUnavailable,
-    SettingsCredentialBroker,
+    SecretStoreCredentialBroker,
 )
 from app.core.config import Settings
 from app.executor_control import ExecutorCommand, ExecutorOutcome, ExecutorUnavailable
@@ -239,7 +239,7 @@ class GitHubBranchPublishExecutorAdapter:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "GitHubBranchPublishExecutorAdapter":
-        broker = SettingsCredentialBroker(settings)
+        broker = SecretStoreCredentialBroker(settings)
         return cls(
             enabled=settings.executor_github_publish_enabled,
             repository=settings.executor_github_publish_repository,
@@ -439,7 +439,7 @@ class GitHubBranchPublishExecutorAdapter:
                     "merge_performed": False,
                     "deploy_performed": False,
                     "external_effects": True,
-                    "credential_policy": "broker_memory_only_not_serialized",
+                    "credential_policy": "secret_store_lease_not_serialized",
                     "publication_policy": "unique_staging_ref_then_atomic_final_ref",
                 }
             ),

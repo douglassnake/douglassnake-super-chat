@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,6 +13,11 @@ class Settings(BaseSettings):
         exclude=True,
         repr=False,
     )
+
+    # M9.2: backend dedicado para segredos de aplicação. `settings` mantém
+    # compatibilidade local; `files` lê arquivos privados montados fora do repo/DB.
+    secret_backend: Literal["settings", "files"] = "settings"
+    secret_dir: str | None = None
 
     # M9.0: autenticação self-hosted single-admin. Desenvolvimento continua
     # explicitamente permissivo por padrão; produção é validada fail-closed.
@@ -87,6 +93,24 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    def model_post_init(self, __context) -> None:
+        # Dynamic import avoids a config<->secret_store import cycle. In `files`
+        # mode there is deliberately NO fallback to environment/.env values for
+        # allowlisted secrets: files are the exclusive source of secret material.
+        if self.secret_backend != "files":
+            return
+        from app.secret_store import ALLOWED_SECRET_NAMES, FileSecretStore
+
+        if not self.secret_dir:
+            raise ValueError("SECRET_DIR is required when SECRET_BACKEND=files")
+        store = FileSecretStore(self.secret_dir)
+        for name in ALLOWED_SECRET_NAMES:
+            object.__setattr__(self, name, None)
+        for name in ALLOWED_SECRET_NAMES:
+            secret = store.acquire(name, required=False)
+            if secret is not None:
+                object.__setattr__(self, name, secret.reveal())
 
 
 @lru_cache

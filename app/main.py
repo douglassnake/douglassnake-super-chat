@@ -25,7 +25,7 @@ from app.worker_attempt_routes import router as worker_attempt_router
 
 settings = get_settings()
 validate_security_settings(settings)
-app = FastAPI(title=settings.app_name, version="0.9.1")
+app = FastAPI(title=settings.app_name, version="0.9.2")
 app.state.settings = settings
 app.state.started_monotonic = time.monotonic()
 app.add_middleware(AuthMiddleware, settings=settings, session_factory=SessionLocal)

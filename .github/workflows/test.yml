@@ -36,6 +36,7 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://superchat:superchat@localhost:5432/superchat
+      PGPASSWORD: superchat
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,3 +50,58 @@ jobs:
         run: alembic upgrade head
       - name: Validate migrated database is at the single head
         run: python scripts/integration_readiness.py --database
+      - name: Locate PostgreSQL 17 service container
+        run: |
+          POSTGRES_CONTAINER="$(docker ps --format '{{.ID}} {{.Image}}' | awk '$2 ~ /^postgres:17/ {print $1; exit}')"
+          test -n "$POSTGRES_CONTAINER"
+          echo "POSTGRES_CONTAINER=$POSTGRES_CONTAINER" >> "$GITHUB_ENV"
+      - name: Seed recovery sentinel
+        run: |
+          python - <<'PY'
+          from app.database import SessionLocal
+          from app.models import Project
+
+          with SessionLocal() as db:
+              db.add(Project(slug="recovery-smoke", name="Recovery Smoke", status="active", priority=1))
+              db.commit()
+          PY
+      - name: Create integrity checked PostgreSQL backup
+        run: |
+          BACKUP_DIR="$(python scripts/backup_postgres.py --output-root /tmp/superchat-backups --postgres-container "$POSTGRES_CONTAINER")"
+          test -f "$BACKUP_DIR/database.dump"
+          test -f "$BACKUP_DIR/manifest.json"
+          echo "BACKUP_DIR=$BACKUP_DIR" >> "$GITHUB_ENV"
+      - name: Create disposable restore database
+        run: |
+          docker exec -e PGPASSWORD "$POSTGRES_CONTAINER" dropdb --if-exists -U superchat superchat_restore
+          docker exec -e PGPASSWORD "$POSTGRES_CONTAINER" createdb -U superchat superchat_restore
+      - name: Restore and verify backup
+        env:
+          RESTORE_DATABASE_URL: postgresql+psycopg://superchat:superchat@localhost:5432/superchat_restore
+        run: |
+          python scripts/restore_postgres.py \
+            --backup-dir "$BACKUP_DIR" \
+            --target-database-url "$RESTORE_DATABASE_URL" \
+            --confirm-empty-target \
+            --postgres-container "$POSTGRES_CONTAINER"
+          DATABASE_URL="$RESTORE_DATABASE_URL" python scripts/integration_readiness.py --database
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["RESTORE_DATABASE_URL"])
+          try:
+              with engine.connect() as connection:
+                  count = connection.execute(
+                      text("SELECT count(*) FROM projects WHERE slug = 'recovery-smoke'")
+                  ).scalar_one()
+                  assert count == 1
+          finally:
+              engine.dispose()
+          PY
+      - name: Remove disposable restore database
+        if: always()
+        run: |
+          if [ -n "${POSTGRES_CONTAINER:-}" ]; then
+            docker exec -e PGPASSWORD "$POSTGRES_CONTAINER" dropdb --if-exists -U superchat superchat_restore || true
+          fi
