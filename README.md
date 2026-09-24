@@ -39,7 +39,7 @@ Cada efeito tem autorização e release próprios. Nenhuma etapa autoriza implic
 - **M9.0** — autenticação single-admin;
 - **M9.1** — observabilidade operacional;
 - **M9.2** — secret files e recuperação self-hosted;
-- **M9.3** — deployment readiness para ZimaOS/NAS, em desenvolvimento.
+- **M9.3** — deployment readiness para ZimaOS/NAS, implementado na branch; validação real do host pendente.
 
 ## M9.0 — autenticação single-admin
 
@@ -113,7 +113,7 @@ O CI executa backup → restore em PostgreSQL 17 descartável e valida um dado s
 
 ## M9.3 — ZimaOS/NAS deployment readiness
 
-O M9.3 prepara o host sem declarar que o equipamento real já foi testado.
+O M9.3 prepara o host sem declarar que o equipamento real já foi testado. A implementação da branch passou em pytest, benchmark, validação do Compose de produção e recovery/readiness.
 
 Preflight read-only:
 

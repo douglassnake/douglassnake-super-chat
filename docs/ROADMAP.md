@@ -90,7 +90,7 @@ Entregas:
 - nenhum novo efeito externo do Controlled Executor.
 
 ### M9.3 — deployment readiness no ZimaOS/NAS
-Status: **em implementação na branch `codex/m9-3-zimaos-readiness`**.
+Status: **implementado funcionalmente na branch `codex/m9-3-zimaos-readiness`; checkpoint real no host pendente**.
 
 Objetivo:
 - preflight read-only do host;
@@ -99,7 +99,7 @@ Objetivo:
 - critérios objetivos de go/no-go;
 - evidência real do ZimaOS/NAS separada da validação de CI.
 
-O marco de código pode ser integrado sem acesso ao host. O **checkpoint operacional real permanece pendente** até que o preflight, backup→restore, HTTPS e retenção sejam executados no ZimaOS/NAS alvo.
+Validação da branch: pytest, benchmark, Compose de produção, integration-readiness e recovery smoke em PostgreSQL 17 estão verdes. O marco de código pode ser integrado sem acesso ao host. O **checkpoint operacional real permanece pendente** até que o preflight, backup→restore, HTTPS e retenção sejam executados no ZimaOS/NAS alvo.
 
 ## Regra de evolução
 
