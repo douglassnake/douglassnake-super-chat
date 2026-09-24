@@ -1,0 +1,49 @@
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in a private environment file}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: ${SUPERCHAT_LOG_MAX_SIZE:-10m}
+        max-file: "${SUPERCHAT_LOG_MAX_FILES:-5}"
+
+  api:
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in a private environment file}@db:5432/${POSTGRES_DB:-superchat}
+      AUTH_ENABLED: "true"
+      AUTH_COOKIE_SECURE: "true"
+      SECRET_BACKEND: files
+      SECRET_DIR: /run/superchat-secrets
+      AUTH_PASSWORD_HASH: ""
+      GITHUB_TOKEN: ""
+      GOOGLE_ACCESS_TOKEN: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GOOGLE_REFRESH_TOKEN: ""
+      EXECUTOR_GITHUB_WRITE_TOKEN: ""
+      EXECUTOR_GITHUB_PUBLISH_TOKEN: ""
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: ${SUPERCHAT_LOG_MAX_SIZE:-10m}
+        max-file: "${SUPERCHAT_LOG_MAX_FILES:-5}"

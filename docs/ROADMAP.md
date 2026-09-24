@@ -44,8 +44,6 @@ publish_github_branch     # GitHub autenticado
 create_pull_request        # PR GitHub
 ```
 
-Cada seta externa continua exigindo release próprio.
-
 Continuam fora da política:
 - atualização/force de branch GitHub final;
 - merge;
@@ -59,74 +57,57 @@ Continuam fora da política:
 ### M9.0 — autenticação single-admin e controle de acesso
 Status: **concluído e integrado em `main`**.
 
-Entregas:
-- autenticação single-admin configurada por ambiente;
-- PBKDF2-SHA256 com salt aleatório;
-- sessão opaca server-side em `auth_sessions`;
-- persistência somente de hashes do token de sessão e CSRF;
-- cookie de sessão HttpOnly + SameSite=Strict;
-- CSRF double-submit vinculado à sessão para métodos mutáveis;
-- login/logout/status;
-- expiração e revogação de sessão;
-- tela de login integrada;
-- modo `production` fail-closed;
-- `AUTH_COOKIE_SECURE=true` obrigatório em produção;
-- hash de senha e demais segredos excluídos da serialização de `Settings`;
-- migration `0009_auth_sessions`;
-- testes e readiness atualizados;
-- nenhum novo efeito externo habilitado.
-
-Continuam fora do M9.0:
-- múltiplos usuários;
-- MFA;
-- OAuth/OIDC/SSO;
-- recuperação de senha por e-mail;
-- RBAC granular.
+Entregas: autenticação single-admin, PBKDF2-SHA256, sessão opaca server-side, CSRF, cookie HttpOnly/SameSite=Strict, logout/revogação, modo production fail-closed e migration `0009_auth_sessions`.
 
 ### M9.1 — observabilidade operacional
 Status: **concluído e integrado em `main`**.
 
-Entregas:
-- API `0.9.1`;
-- `X-Request-ID` validado ou gerado server-side em cada resposta normal;
-- logs HTTP estruturados em JSON para `stdout`;
-- logs sem query string, body, cookies, Authorization ou tokens;
-- exceções não tratadas registram apenas o tipo, não a mensagem;
-- `GET /ops/status` protegido com readiness do banco, versão, ambiente e uptime;
-- `GET /ops/summary` com status reais agrupados de execuções, requests, workers e aprovações;
-- sinais de leases expirados, aprovações pendentes e falhas nas últimas 24 h;
-- `GET /ops/failures` com falhas recentes sanitizadas e truncadas;
-- nenhuma tabela/migration nova;
-- nenhum serviço de telemetria externo;
-- nenhum novo efeito externo habilitado.
+Entregas: API `0.9.1`, `X-Request-ID`, logs HTTP JSON sanitizados, `/ops/status`, `/ops/summary` e `/ops/failures`, sem telemetria externa.
 
 ### M9.2 — credenciais dedicadas e recuperação self-hosted
-Status: **implementado funcionalmente na branch `codex/m9-2-self-hosted-recovery`; aguardando CI final/PR**.
+Status: **concluído e integrado em `main`**.
+
+Merge: PR #54 → `7f1123bb0b5df4b42241bce42155bb91f624e045`.
+
+Validação pós-merge no `main`:
+- `pytest`: sucesso;
+- benchmark CLI: sucesso;
+- integration-readiness: sucesso;
+- migrations em PostgreSQL 17 limpo: sucesso;
+- backup com manifesto/checksum: sucesso;
+- restore em banco descartável: sucesso;
+- verificação do dado sentinela pós-restore: sucesso.
 
 Entregas:
 - API `0.9.2`;
-- `SecretStore` allowlisted com backend `settings` para desenvolvimento e `files` para produção;
-- `FileSecretStore` somente leitura, sem symlinks, com limites de tamanho e permissões POSIX restritas;
-- rotação observada em nova aquisição por substituição atômica de arquivo;
-- backend `files` exclusivo: sem fallback silencioso para `.env`/settings;
-- `production` exige `SECRET_BACKEND=files` e `SECRET_DIR`;
-- broker de publicação GitHub integrado ao secret store sem persistir segredo;
+- `SecretStore` allowlisted com backend `files`;
+- produção exige `SECRET_BACKEND=files` e `SECRET_DIR`;
+- secret files read-only, sem symlinks e com permissões restritas;
+- rotação por substituição atômica;
 - scripts de backup/restore PostgreSQL;
-- backup custom-format com diretório privado, manifesto, tamanho, Alembic head e SHA-256;
-- restore somente para banco explicitamente vazio/descartável e com confirmação explícita;
-- verificação pós-restore do Alembic head e tabelas críticas;
-- senha PostgreSQL passada por ambiente e não por argv;
-- CI executa backup → restore em PostgreSQL 17 descartável e valida dado sentinela;
-- nenhum novo efeito externo do Controlled Executor habilitado.
+- manifesto com SHA-256 e Alembic head;
+- restore somente para destino explicitamente vazio/descartável;
+- nenhum novo efeito externo do Controlled Executor.
 
-Checkpoint operacional ainda obrigatório antes de deploy externo:
-- executar backup/restore real no ZimaOS/NAS alvo;
-- definir destino físico secundário e política de retenção;
-- validar permissões do diretório real de secrets e procedimento de rotação;
-- validar rotação/retensão de logs no runtime escolhido.
+### M9.3 — deployment readiness no ZimaOS/NAS
+Status: **implementado funcionalmente na branch `codex/m9-3-zimaos-readiness`; checkpoint real no host pendente**.
+
+Objetivo:
+- preflight read-only do host;
+- overlay Compose de produção com bind local e rotação de logs;
+- runbook de HTTPS/reverse proxy, persistência, backup/restore e rotação;
+- critérios objetivos de go/no-go;
+- evidência real do ZimaOS/NAS separada da validação de CI.
+
+Validação da branch: pytest, benchmark, Compose de produção, integration-readiness e recovery smoke em PostgreSQL 17 estão verdes. O marco de código pode ser integrado sem acesso ao host. O **checkpoint operacional real permanece pendente** até que o preflight, backup→restore, HTTPS e retenção sejam executados no ZimaOS/NAS alvo.
 
 ## Regra de evolução
 
 Cada efeito externo deve ter autorização própria, input resolvido pelo servidor, prova de estado anterior, verificação pós-efeito, segredo fora do estado persistido e reconciliação explícita quando rollback total não for possível.
 
-Nenhum deploy externo deve ocorrer antes de M9.2 estar integrado, CI verde, HTTPS/reverse proxy estarem configurados e o procedimento de backup/restore ter sido testado no ambiente self-hosted alvo.
+Nenhum deploy externo deve ocorrer antes de:
+1. M9.3 estar integrado e com CI verde;
+2. preflight do host real estar `ready`;
+3. backup/restore real ter sido comprovado no ZimaOS/NAS;
+4. HTTPS/reverse proxy estar configurado;
+5. destino secundário de backup e retenção de logs estarem definidos.

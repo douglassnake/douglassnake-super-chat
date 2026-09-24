@@ -17,6 +17,16 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pytest -q
       - run: python scripts/context_benchmark.py benchmarks/context_cases.json --output /tmp/context-benchmark.json
+      - name: Validate production Compose overlays
+        env:
+          POSTGRES_PASSWORD: ci-only-not-a-real-secret
+          SUPERCHAT_SECRET_DIR_HOST: /tmp/superchat-secrets
+        run: >-
+          docker compose
+          -f docker-compose.yml
+          -f docker-compose.secrets.yml
+          -f docker-compose.production.yml
+          config >/dev/null
 
   integration-readiness:
     runs-on: ubuntu-latest
