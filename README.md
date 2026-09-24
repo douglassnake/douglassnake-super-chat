@@ -39,7 +39,7 @@ Cada efeito tem autorização e release próprios. Nenhuma etapa autoriza implic
 - **M9.0** — autenticação single-admin;
 - **M9.1** — observabilidade operacional;
 - **M9.2** — secret files e recuperação self-hosted;
-- **M9.3** — deployment readiness para ZimaOS/NAS, implementado na branch; validação real do host pendente.
+- **M9.3** — deployment readiness para ZimaOS/NAS, integrado em `main`; validação real do host rastreada na Issue #57.
 
 ## M9.0 — autenticação single-admin
 
@@ -113,7 +113,7 @@ O CI executa backup → restore em PostgreSQL 17 descartável e valida um dado s
 
 ## M9.3 — ZimaOS/NAS deployment readiness
 
-O M9.3 prepara o host sem declarar que o equipamento real já foi testado. A implementação da branch passou em pytest, benchmark, validação do Compose de produção e recovery/readiness.
+O M9.3 está integrado em `main` pelo PR #56 no merge commit `283110a048e8cab4a942700820711c62c50a4130`. O CI pós-merge passou em pytest, benchmark, validação do Compose de produção, integration-readiness, migrations e recovery smoke.
 
 Preflight read-only:
 
@@ -227,4 +227,4 @@ As credenciais GitHub permanecem separadas por finalidade: leitura, criação de
 
 ## Próxima fronteira
 
-Concluir o **M9.3** em código e, depois, executar o checkpoint real no ZimaOS/NAS: preflight, backup→restore, HTTPS/reverse proxy, destino secundário de backup e política de retenção. Nenhum deploy externo é considerado liberado antes dessa evidência real.
+Executar o **checkpoint operacional real no ZimaOS/NAS**, rastreado na Issue #57: preflight, backup→restore, HTTPS/reverse proxy, destino secundário de backup e política de retenção. Nenhum deploy externo é considerado liberado antes dessa evidência real.
