@@ -90,16 +90,28 @@ Entregas:
 - nenhum novo efeito externo do Controlled Executor.
 
 ### M9.3 — deployment readiness no ZimaOS/NAS
-Status: **implementado funcionalmente na branch `codex/m9-3-zimaos-readiness`; checkpoint real no host pendente**.
+Status: **concluído e integrado em `main`; checkpoint real no host pendente**.
 
-Objetivo:
+Merge: PR #56 → `283110a048e8cab4a942700820711c62c50a4130`.
+
+Validação pós-merge no `main`:
+- `pytest`: sucesso;
+- benchmark CLI: sucesso;
+- validação dos overlays Compose de produção: sucesso;
+- integration-readiness: sucesso;
+- migrations em PostgreSQL 17 limpo: sucesso;
+- backup com manifesto/checksum: sucesso;
+- restore em banco descartável: sucesso;
+- verificação pós-restore: sucesso.
+
+Entregas:
 - preflight read-only do host;
 - overlay Compose de produção com bind local e rotação de logs;
 - runbook de HTTPS/reverse proxy, persistência, backup/restore e rotação;
 - critérios objetivos de go/no-go;
 - evidência real do ZimaOS/NAS separada da validação de CI.
 
-Validação da branch: pytest, benchmark, Compose de produção, integration-readiness e recovery smoke em PostgreSQL 17 estão verdes. O marco de código pode ser integrado sem acesso ao host. O **checkpoint operacional real permanece pendente** até que o preflight, backup→restore, HTTPS e retenção sejam executados no ZimaOS/NAS alvo.
+O **checkpoint operacional real permanece pendente** até que preflight, backup→restore, HTTPS, destino secundário de backup e retenção sejam comprovados no ZimaOS/NAS alvo. Esse trabalho é rastreado na Issue #57 e não pode ser substituído por evidência de CI.
 
 ## Regra de evolução
 
