@@ -2,6 +2,8 @@ services:
   db:
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in a private environment file}
+    volumes:
+      - "${SUPERCHAT_DATA_DIR_HOST:?set SUPERCHAT_DATA_DIR_HOST to a persistent host directory}:/var/lib/postgresql/data"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
