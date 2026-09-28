@@ -146,3 +146,27 @@ def test_missing_docker_blocks_preflight(tmp_path: Path, monkeypatch) -> None:
     assert not report.ready
     docker = next(item for item in report.checks if item.name == "docker_runtime")
     assert docker.status == "fail"
+
+
+def test_run_command_preserves_only_docker_context_environment(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setenv("DOCKER_CONFIG", "/tmp/superchat-docker-config")
+    monkeypatch.setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+    monkeypatch.setenv("DOCKER_CONTEXT", "default")
+    monkeypatch.setenv("SUPERCHAT_SECRET_SENTINEL", "must-not-leak")
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+
+    preflight._run_command(("docker", "version"))
+
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["DOCKER_CONFIG"] == "/tmp/superchat-docker-config"
+    assert env["DOCKER_HOST"] == "unix:///var/run/docker.sock"
+    assert env["DOCKER_CONTEXT"] == "default"
+    assert "SUPERCHAT_SECRET_SENTINEL" not in env
