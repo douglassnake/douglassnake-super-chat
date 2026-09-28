@@ -180,13 +180,19 @@ def check_local_port_available(host: str, port: int) -> CheckResult:
 
 
 def _run_command(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    env = {"PATH": os.environ.get("PATH", "")}
+    for name in ("DOCKER_CONFIG", "DOCKER_HOST", "DOCKER_CONTEXT"):
+        value = os.environ.get(name)
+        if value:
+            env[name] = value
+
     return subprocess.run(
         list(argv),
         check=False,
         capture_output=True,
         text=True,
         timeout=10,
-        env={"PATH": os.environ.get("PATH", "")},
+        env=env,
     )
 
 
