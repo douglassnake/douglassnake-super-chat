@@ -21,12 +21,23 @@ jobs:
         env:
           POSTGRES_PASSWORD: ci-only-not-a-real-secret
           SUPERCHAT_SECRET_DIR_HOST: /tmp/superchat-secrets
-        run: >-
-          docker compose
-          -f docker-compose.yml
-          -f docker-compose.secrets.yml
-          -f docker-compose.production.yml
-          config >/dev/null
+          SUPERCHAT_DATA_DIR_HOST: /tmp/superchat-data/postgres
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.secrets.yml \
+            -f docker-compose.production.yml \
+            config >/tmp/superchat-compose.yml
+          python - <<'PY'
+          import pathlib
+          import yaml
+
+          config = yaml.safe_load(pathlib.Path('/tmp/superchat-compose.yml').read_text())
+          mounts = config['services']['db']['volumes']
+          postgres_mount = next(item for item in mounts if item['target'] == '/var/lib/postgresql/data')
+          assert postgres_mount['type'] == 'bind', postgres_mount
+          assert postgres_mount['source'] == '/tmp/superchat-data/postgres', postgres_mount
+          PY
 
   integration-readiness:
     runs-on: ubuntu-latest
