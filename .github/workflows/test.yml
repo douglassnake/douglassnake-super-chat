@@ -27,12 +27,12 @@ jobs:
             -f docker-compose.yml \
             -f docker-compose.secrets.yml \
             -f docker-compose.production.yml \
-            config >/tmp/superchat-compose.yml
+            config --format json >/tmp/superchat-compose.json
           python - <<'PY'
+          import json
           import pathlib
-          import yaml
 
-          config = yaml.safe_load(pathlib.Path('/tmp/superchat-compose.yml').read_text())
+          config = json.loads(pathlib.Path('/tmp/superchat-compose.json').read_text())
           mounts = config['services']['db']['volumes']
           postgres_mount = next(item for item in mounts if item['target'] == '/var/lib/postgresql/data')
           assert postgres_mount['type'] == 'bind', postgres_mount
