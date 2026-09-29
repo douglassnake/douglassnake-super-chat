@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -163,7 +163,7 @@ def prepare_github_onboarding(
         )
 
     payload = SessionDeltaCreate(
-        session_key=f"github-onboarding:{now.strftime('%Y%m%dT%H%M%SZ')}",
+        session_key=f"github-onboarding:{now.strftime('%Y%m%dT%H%M%SZ')}:{uuid4().hex[:8]}",
         summary=summary,
         decisions=decisions,
         tasks=tasks,
