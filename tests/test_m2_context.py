@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import ContextRun
+from app.models import ContextRun, Event
 
 
 @pytest.fixture()
@@ -165,6 +166,104 @@ def test_continue_project_builds_operational_context(context_client: tuple[TestC
     with SessionFactory() as db:
         audit_count = db.scalar(select(func.count(ContextRun.id)))
         assert audit_count == 1
+
+
+def test_operational_context_reserves_signal_and_caps_successful_workflows(
+    context_client: tuple[TestClient, sessionmaker],
+) -> None:
+    client, SessionFactory = context_client
+    project = client.post(
+        "/projects",
+        json={
+            "slug": "operational-quality",
+            "name": "Operational Quality",
+            "description": "Projeto para validar sinal operacional contra ruído de CI.",
+            "status": "active",
+            "priority": 100,
+            "next_action": "Validar recuperação operacional",
+        },
+    ).json()
+    project_id = project["id"]
+
+    assert client.post(
+        f"/projects/{project_id}/decisions",
+        json={
+            "title": "Publicação HTTPS pelo Caddy compartilhado",
+            "body": "Usar hostname dedicado no Caddy existente e acessar api:8000 pela rede Docker.",
+            "rationale": "Evita concorrência na porta 443 e mantém isolamento.",
+            "source_ref": "decision:caddy",
+        },
+    ).status_code == 201
+
+    assert client.post(
+        f"/projects/{project_id}/tasks",
+        json={
+            "title": "Automatizar backup e restore",
+            "description": "Automatizar backup lógico do PostgreSQL e teste periódico de restore.",
+            "priority": 90,
+            "source_ref": "task:backup",
+        },
+    ).status_code == 201
+
+    assert client.post(
+        f"/projects/{project_id}/context-items",
+        json={
+            "kind": "deployment",
+            "title": "Implantação ZimaOS/NAS",
+            "content": (
+                "PostgreSQL persistente no NAS, Super Chat atrás do Caddy e "
+                "volume antigo preservado para rollback."
+            ),
+            "importance": 1.0,
+            "source_type": "manual",
+            "source_ref": "manual:deployment",
+        },
+    ).status_code == 201
+
+    now = datetime.now(timezone.utc)
+    with SessionFactory() as db:
+        for index in range(10):
+            db.add(
+                Event(
+                    project_id=project_id,
+                    source_type="github",
+                    event_type="github.workflow_run",
+                    external_id=f"run:{index}",
+                    title=f"Action deployment Caddy backup success {index}",
+                    body="implantação Caddy PostgreSQL backup restore arquitetura",
+                    occurred_at=now,
+                    url=f"https://github.example/actions/runs/{index}",
+                    metadata_json={
+                        "repository": "owner/repo",
+                        "status": "completed",
+                        "conclusion": "success",
+                    },
+                )
+            )
+        db.commit()
+
+    response = client.post(
+        "/context/build",
+        json={
+            "project_id": project_id,
+            "query": "implantação ZimaOS Caddy PostgreSQL persistência backup restore decisão arquitetural",
+            "profile": "standard",
+        },
+    )
+    assert response.status_code == 200
+    package = response.json()
+    refs = [item["source_ref"] for item in package["items"]]
+    assert refs[:3] == ["decision:caddy", "task:backup", "manual:deployment"]
+
+    successful_workflows = [
+        item
+        for item in package["items"]
+        if item["source_type"] == "github"
+        and item["source_ref"]
+        and "/actions/runs/" in item["source_ref"]
+    ]
+    assert len(successful_workflows) <= 3
+    assert package["budget"]["estimated_tokens"] <= package["budget"]["max_tokens"]
 
 
 def test_invalid_context_profile_is_rejected(context_client: tuple[TestClient, sessionmaker]) -> None:
