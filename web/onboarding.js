@@ -66,6 +66,7 @@
       button.disabled = true;
     } else {
       button.textContent = button.dataset.previousText || button.textContent;
+      delete button.dataset.previousText;
       button.disabled = false;
     }
   }
@@ -103,6 +104,7 @@
             <strong>${escapeHtml(item.title)}</strong>
             <p>${escapeHtml(item.body)}</p>
             ${item.rationale ? `<small>${escapeHtml(item.rationale)}</small>` : ""}
+            ${item.source_ref ? `<small>Fonte: ${escapeHtml(item.source_ref)}</small>` : ""}
           </div>
         `).join("") : "<p>Nenhuma decisão sugerida.</p>"}
       </div>
@@ -113,6 +115,7 @@
             <strong>${escapeHtml(item.title)}</strong>
             <p>${escapeHtml(item.description || "")}</p>
             <small>Prioridade ${escapeHtml(item.priority ?? 0)}</small>
+            ${item.source_ref ? `<small>Fonte: ${escapeHtml(item.source_ref)}</small>` : ""}
           </div>
         `).join("") : "<p>Nenhuma tarefa sugerida.</p>"}
       </div>
@@ -158,14 +161,15 @@
   $("#github-onboarding-button")?.addEventListener("click", async (event) => {
     const projectId = activeProjectId();
     if (!projectId) return;
-    setBusy(event.currentTarget, true, "Preparando…");
+    const button = event.currentTarget;
+    setBusy(button, true, "Preparando…");
     try {
       const result = await prepareOnboarding(projectId);
       notify(`${result.suggested_tasks} tarefa(s) e ${result.suggested_decisions} decisão(ões) aguardando revisão.`);
     } catch (error) {
       notify(`Falha no onboarding GitHub: ${error.message}`, true);
     } finally {
-      setBusy(event.currentTarget, false);
+      setBusy(button, false);
     }
   });
 
