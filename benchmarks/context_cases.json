@@ -1,5 +1,5 @@
 {
-  "name": "context-engine-baseline-v1",
+  "name": "context-engine-baseline-v2",
   "cases": [
     {
       "name": "CFD pressure-loss minimal",
@@ -7,7 +7,9 @@
       "query": "perda de carga pressão escoamento CFD",
       "profile": "minimal",
       "k": 3,
-      "expected_source_refs": ["fixture:cfd-pressure-loss"],
+      "expected_source_refs": [
+        "fixture:cfd-pressure-loss"
+      ],
       "items": [
         {
           "kind": "fact",
@@ -41,7 +43,9 @@
       "query": "falha crítica pipeline testes próxima ação",
       "profile": "minimal",
       "k": 2,
-      "expected_source_refs": ["fixture:critical-ci"],
+      "expected_source_refs": [
+        "fixture:critical-ci"
+      ],
       "items": [
         {
           "kind": "decision",
@@ -72,12 +76,61 @@
       ]
     },
     {
+      "name": "Operational deployment standard",
+      "project_name": "Projeto self-hosted fictício",
+      "query": "implantação Caddy PostgreSQL backup restore decisão arquitetural próxima ação",
+      "profile": "standard",
+      "k": 3,
+      "expected_source_refs": [
+        "fixture:caddy-decision",
+        "fixture:backup-task",
+        "fixture:deployment"
+      ],
+      "items": [
+        {
+          "kind": "decision",
+          "title": "Caddy compartilhado",
+          "content": "A decisão arquitetural usa hostname dedicado no Caddy existente e mantém o backend isolado na rede Docker.",
+          "importance": 0.95,
+          "source_type": "benchmark",
+          "source_ref": "fixture:caddy-decision"
+        },
+        {
+          "kind": "task",
+          "title": "Automatizar backup e restore",
+          "content": "Próxima ação: automatizar backup lógico do PostgreSQL e teste periódico de restore.",
+          "importance": 0.95,
+          "source_type": "benchmark",
+          "source_ref": "fixture:backup-task"
+        },
+        {
+          "kind": "deployment",
+          "title": "Implantação no NAS",
+          "content": "PostgreSQL persistente no NAS, HTTPS pelo Caddy e volume antigo preservado para rollback.",
+          "importance": 1.0,
+          "source_type": "benchmark",
+          "source_ref": "fixture:deployment"
+        },
+        {
+          "kind": "event",
+          "title": "Action tests success",
+          "content": "Execução de CI concluída com sucesso após a implantação.",
+          "importance": 0.8,
+          "source_type": "benchmark",
+          "source_ref": "fixture:ci-success"
+        }
+      ]
+    },
+    {
       "name": "Access control standard",
       "project_name": "SaaS fictício",
       "query": "MFA autenticação RBAC permissões owner",
       "profile": "standard",
       "k": 3,
-      "expected_source_refs": ["fixture:mfa", "fixture:rbac"],
+      "expected_source_refs": [
+        "fixture:mfa",
+        "fixture:rbac"
+      ],
       "items": [
         {
           "kind": "decision",
@@ -119,7 +172,10 @@
       "query": "documento prazo reunião decisão próxima ação",
       "profile": "deep",
       "k": 4,
-      "expected_source_refs": ["fixture:deadline", "fixture:meeting"],
+      "expected_source_refs": [
+        "fixture:deadline",
+        "fixture:meeting"
+      ],
       "items": [
         {
           "kind": "document_excerpt",
