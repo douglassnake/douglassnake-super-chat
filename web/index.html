@@ -40,6 +40,7 @@
           <p>Memória, contexto e continuidade de projetos.</p>
         </div>
         <div class="action-row">
+          <button id="new-project-button" class="button primary" type="button">Novo projeto</button>
           <button id="refresh-button" class="button ghost" type="button">Atualizar</button>
           <button class="button ghost" type="button" onclick="window.superchatLogout()">Sair</button>
         </div>
@@ -76,7 +77,10 @@
                 <h2 id="detail-name"></h2>
                 <p id="detail-description" class="muted"></p>
               </div>
-              <div id="detail-health" class="health-ring" aria-label="Health Score"></div>
+              <div class="detail-header-actions">
+                <button id="edit-project-button" class="button ghost compact" type="button">Editar projeto</button>
+                <div id="detail-health" class="health-ring" aria-label="Health Score"></div>
+              </div>
             </div>
 
             <div class="next-action-card">
@@ -102,12 +106,35 @@
 
             <div class="detail-columns">
               <section>
-                <div class="subheading"><h3>Tarefas abertas</h3><span id="task-count"></span></div>
+                <div class="subheading">
+                  <div><h3>Tarefas abertas</h3><span id="task-count"></span></div>
+                  <button id="new-task-button" class="button ghost compact" type="button">+ Tarefa</button>
+                </div>
                 <div id="task-list" class="stack"></div>
               </section>
               <section>
-                <div class="subheading"><h3>Fontes</h3><span id="source-count"></span></div>
+                <div class="subheading">
+                  <div><h3>Fontes</h3><span id="source-count"></span></div>
+                  <button id="new-source-button" class="button ghost compact" type="button">+ GitHub</button>
+                </div>
                 <div id="source-list" class="stack"></div>
+              </section>
+            </div>
+
+            <div class="detail-columns">
+              <section>
+                <div class="subheading">
+                  <div><h3>Decisões</h3><span id="decision-count"></span></div>
+                  <button id="new-decision-button" class="button ghost compact" type="button">+ Decisão</button>
+                </div>
+                <div id="decision-list" class="stack"></div>
+              </section>
+              <section>
+                <div class="subheading">
+                  <div><h3>Memória operacional</h3><span id="memory-count"></span></div>
+                  <button id="new-memory-button" class="button ghost compact" type="button">+ Memória</button>
+                </div>
+                <div id="memory-list" class="stack"></div>
               </section>
             </div>
 
@@ -125,6 +152,23 @@
       </section>
     </main>
   </div>
+
+  <dialog id="editor-dialog" class="modal editor-modal">
+    <form id="editor-form" class="modal-card">
+      <div class="modal-heading">
+        <div>
+          <span id="editor-eyebrow" class="eyebrow">CADASTRO</span>
+          <h2 id="editor-title">Editar</h2>
+        </div>
+        <button id="editor-close" class="icon-button" type="button" aria-label="Fechar">×</button>
+      </div>
+      <div id="editor-fields" class="form-grid"></div>
+      <div class="modal-actions">
+        <button id="editor-cancel" class="button ghost" type="button">Cancelar</button>
+        <button id="editor-save" class="button primary" type="submit">Salvar</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="delta-dialog" class="modal">
     <form method="dialog" class="modal-card">
