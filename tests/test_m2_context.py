@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from datetime import datetime, timezone
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -221,11 +222,12 @@ def test_operational_context_reserves_signal_and_caps_successful_workflows(
     ).status_code == 201
 
     now = datetime.now(timezone.utc)
+    project_uuid = UUID(project_id)
     with SessionFactory() as db:
         for index in range(10):
             db.add(
                 Event(
-                    project_id=project_id,
+                    project_id=project_uuid,
                     source_type="github",
                     event_type="github.workflow_run",
                     external_id=f"run:{index}",
