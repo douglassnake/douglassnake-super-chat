@@ -22,6 +22,7 @@ jobs:
           POSTGRES_PASSWORD: ci-only-not-a-real-secret
           SUPERCHAT_SECRET_DIR_HOST: /tmp/superchat-secrets
           SUPERCHAT_DATA_DIR_HOST: /tmp/superchat-data/postgres
+          SUPERCHAT_PROXY_NETWORK: ci-superchat-proxy
         run: |
           docker compose \
             -f docker-compose.yml \
@@ -37,6 +38,15 @@ jobs:
           postgres_mount = next(item for item in mounts if item['target'] == '/var/lib/postgresql/data')
           assert postgres_mount['type'] == 'bind', postgres_mount
           assert postgres_mount['source'] == '/tmp/superchat-data/postgres', postgres_mount
+
+          api_networks = set(config['services']['api']['networks'])
+          db_networks = set(config['services']['db']['networks'])
+          assert 'reverse_proxy' in api_networks, api_networks
+          assert 'reverse_proxy' not in db_networks, db_networks
+
+          proxy_network = config['networks']['reverse_proxy']
+          assert proxy_network['external'] is True, proxy_network
+          assert proxy_network['name'] == 'ci-superchat-proxy', proxy_network
           PY
 
   integration-readiness:

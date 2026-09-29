@@ -28,6 +28,9 @@ services:
       GOOGLE_REFRESH_TOKEN: ""
       EXECUTOR_GITHUB_WRITE_TOKEN: ""
       EXECUTOR_GITHUB_PUBLISH_TOKEN: ""
+    networks:
+      - default
+      - reverse_proxy
     restart: unless-stopped
     init: true
     security_opt:
@@ -49,3 +52,8 @@ services:
       options:
         max-size: ${SUPERCHAT_LOG_MAX_SIZE:-10m}
         max-file: "${SUPERCHAT_LOG_MAX_FILES:-5}"
+
+networks:
+  reverse_proxy:
+    external: true
+    name: ${SUPERCHAT_PROXY_NETWORK:-superchat_proxy}
