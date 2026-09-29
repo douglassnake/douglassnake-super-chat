@@ -14,15 +14,37 @@ from app.models import ContextItem, ContextRun, Decision, Event, Project, Sessio
 
 
 PROFILE_CONFIG = {
-    "minimal": {"max_tokens": 1800, "max_items": 10, "summary_limit": 1, "event_limit": 20},
-    "standard": {"max_tokens": 5000, "max_items": 25, "summary_limit": 3, "event_limit": 60},
-    "deep": {"max_tokens": 15000, "max_items": 60, "summary_limit": 6, "event_limit": 150},
+    "minimal": {
+        "max_tokens": 1800,
+        "max_items": 10,
+        "summary_limit": 1,
+        "event_limit": 20,
+        "max_successful_workflow_runs": 1,
+    },
+    "standard": {
+        "max_tokens": 5000,
+        "max_items": 25,
+        "summary_limit": 3,
+        "event_limit": 60,
+        "max_successful_workflow_runs": 3,
+    },
+    "deep": {
+        "max_tokens": 15000,
+        "max_items": 60,
+        "summary_limit": 6,
+        "event_limit": 150,
+        "max_successful_workflow_runs": 8,
+    },
 }
 
 TYPE_STRENGTH = {
     "summary": 1.00,
     "decision": 0.98,
+    "deployment": 0.97,
+    "architecture": 0.96,
     "task": 0.95,
+    "operational": 0.94,
+    "runbook": 0.94,
     "fact": 0.90,
     "document_excerpt": 0.85,
     "event": 0.82,
@@ -43,6 +65,26 @@ SOURCE_STRENGTH = {
 _WORD_RE = re.compile(r"[\wÀ-ÿ-]+", re.UNICODE)
 _SPACE_RE = re.compile(r"\s+")
 
+_OPERATIONAL_QUERY_TERMS = (
+    "continuar",
+    "status",
+    "próxima ação",
+    "proxima acao",
+    "decis",
+    "decision",
+    "tarefa",
+    "task",
+    "pend",
+    "bloque",
+    "next action",
+    "implant",
+    "deployment",
+    "arquitet",
+    "architecture",
+    "backup",
+    "restore",
+)
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -53,6 +95,8 @@ class Candidate:
     source_ref: str | None
     timestamp: datetime | None
     importance: float
+    event_type: str | None = None
+    event_conclusion: str | None = None
     score: float = 0.0
     estimated_tokens: int = 0
 
@@ -108,6 +152,33 @@ def render_candidate(candidate: Candidate) -> str:
     return "\n".join(parts)
 
 
+def has_operational_intent(query: str) -> bool:
+    normalized = normalize_text(query)
+    return any(term in normalized for term in _OPERATIONAL_QUERY_TERMS)
+
+
+def intent_bonus(candidate: Candidate, query: str) -> float:
+    normalized = normalize_text(query)
+    bonus = 0.0
+
+    if candidate.kind == "decision" and any(term in normalized for term in ("decis", "decision", "arquitet", "architecture")):
+        bonus += 0.12
+
+    if candidate.kind == "task" and any(
+        term in normalized
+        for term in ("tarefa", "task", "próxima ação", "proxima acao", "next action", "pend", "bloque", "backup", "restore")
+    ):
+        bonus += 0.10
+
+    if candidate.kind in {"deployment", "architecture", "operational", "runbook"} and any(
+        term in normalized
+        for term in ("implant", "deployment", "arquitet", "architecture", "infra", "backup", "restore")
+    ):
+        bonus += 0.10
+
+    return bonus
+
+
 def score_candidate(candidate: Candidate, query: str, now: datetime) -> Candidate:
     text = render_candidate(candidate)
     relevance = lexical_relevance(query, text)
@@ -121,10 +192,11 @@ def score_candidate(candidate: Candidate, query: str, now: datetime) -> Candidat
         + recency * 0.15
         + type_strength * 0.10
         + source_strength * 0.10
+        + intent_bonus(candidate, query)
     )
     return replace(
         candidate,
-        score=round(score, 6),
+        score=round(min(1.0, score), 6),
         estimated_tokens=estimate_tokens(text),
     )
 
@@ -270,6 +342,7 @@ def _event_candidates(db: Session, project_id: UUID, limit: int) -> list[Candida
     for event in db.scalars(stmt).all():
         metadata = event.metadata_json or {}
         repo = metadata.get("repository")
+        conclusion = str(metadata.get("conclusion") or "").lower() or None
         content_parts = [event.body or event.title]
         if repo:
             content_parts.append(f"Repositório: {repo}")
@@ -287,6 +360,8 @@ def _event_candidates(db: Session, project_id: UUID, limit: int) -> list[Candida
                 source_ref=event.url or f"event:{event.id}",
                 timestamp=event.occurred_at,
                 importance=_event_importance(event),
+                event_type=event.event_type,
+                event_conclusion=conclusion,
             )
         )
     return result
@@ -315,6 +390,45 @@ def _context_item_candidates(db: Session, project_id: UUID, now: datetime) -> li
         )
         for item in db.scalars(stmt).all()
     ]
+
+
+def _candidate_key(candidate: Candidate) -> tuple[str, str | None, str]:
+    return candidate.kind, candidate.source_ref, normalize_text(candidate.content)
+
+
+def _reserved_operational_candidates(candidates: list[Candidate], query: str) -> list[Candidate]:
+    if not has_operational_intent(query):
+        return []
+
+    selectors = (
+        lambda item: item.kind == "decision",
+        lambda item: item.kind == "task",
+        lambda item: (
+            item.kind not in {"summary", "decision", "task", "event"}
+            and item.importance >= 0.90
+        ),
+    )
+
+    reserved: list[Candidate] = []
+    used: set[tuple[str, str | None, str]] = set()
+    for selector in selectors:
+        candidate = next(
+            (
+                item
+                for item in candidates
+                if selector(item) and _candidate_key(item) not in used
+            ),
+            None,
+        )
+        if candidate is None:
+            continue
+        reserved.append(candidate)
+        used.add(_candidate_key(candidate))
+    return reserved
+
+
+def _is_successful_workflow_run(candidate: Candidate) -> bool:
+    return candidate.event_type == "github.workflow_run" and candidate.event_conclusion == "success"
 
 
 def build_context_package(
@@ -361,9 +475,33 @@ def build_context_package(
     remaining = max(0, max_tokens - base_tokens)
 
     selected: list[Candidate] = []
+    selected_keys: set[tuple[str, str | None, str]] = set()
+    successful_workflow_runs = 0
+    max_successful_workflow_runs = int(config["max_successful_workflow_runs"])
+    reserve_item_limit = max(256, max_tokens // 5)
+
+    for candidate in _reserved_operational_candidates(unique, query):
+        if len(selected) >= int(config["max_items"]):
+            break
+        item = candidate
+        item_limit = min(remaining, reserve_item_limit)
+        if item.estimated_tokens > item_limit:
+            item = compact_candidate(item, item_limit)
+            if item is None:
+                continue
+        if item.estimated_tokens <= remaining:
+            selected.append(item)
+            selected_keys.add(_candidate_key(candidate))
+            remaining -= item.estimated_tokens
+
     for candidate in unique:
         if len(selected) >= int(config["max_items"]):
             break
+        if _candidate_key(candidate) in selected_keys:
+            continue
+        if _is_successful_workflow_run(candidate):
+            if successful_workflow_runs >= max_successful_workflow_runs:
+                continue
         item = candidate
         if item.estimated_tokens > remaining:
             item = compact_candidate(item, remaining)
@@ -371,7 +509,10 @@ def build_context_package(
                 continue
         if item.estimated_tokens <= remaining:
             selected.append(item)
+            selected_keys.add(_candidate_key(candidate))
             remaining -= item.estimated_tokens
+            if _is_successful_workflow_run(candidate):
+                successful_workflow_runs += 1
 
     candidate_tokens = base_tokens + sum(item.estimated_tokens for item in unique)
     selected_tokens = base_tokens + sum(item.estimated_tokens for item in selected)
