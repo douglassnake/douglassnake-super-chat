@@ -49,6 +49,15 @@ class DecisionCreate(BaseModel):
     source_ref: str | None = None
 
 
+class DecisionUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    body: str | None = Field(default=None, min_length=1)
+    rationale: str | None = None
+    status: str | None = None
+    decided_at: datetime | None = None
+    source_ref: str | None = None
+
+
 class DecisionRead(ORMModel):
     id: UUID
     project_id: UUID | None
@@ -171,6 +180,19 @@ class ContextItemCreate(BaseModel):
     source_ref: str | None = None
     source_timestamp: datetime | None = None
     generated: bool = False
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+
+
+class ContextItemUpdate(BaseModel):
+    kind: str | None = Field(default=None, min_length=1, max_length=50)
+    title: str | None = Field(default=None, max_length=255)
+    content: str | None = Field(default=None, min_length=1)
+    importance: float | None = Field(default=None, ge=0.0, le=1.0)
+    source_type: str | None = Field(default=None, min_length=1, max_length=50)
+    source_ref: str | None = None
+    source_timestamp: datetime | None = None
+    generated: bool | None = None
     valid_from: datetime | None = None
     valid_to: datetime | None = None
 

@@ -15,10 +15,12 @@ from app.schemas import (
     ContextBuildRequest,
     ContextItemCreate,
     ContextItemRead,
+    ContextItemUpdate,
     ContextPackage,
     ContextProfile,
     DecisionCreate,
     DecisionRead,
+    DecisionUpdate,
     GitHubSyncResult,
     ProjectCreate,
     ProjectRead,
@@ -41,6 +43,15 @@ def get_project_or_404(db: Session, project_id: UUID) -> Project:
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+def touch_project(db: Session, project_id: UUID | None) -> None:
+    if project_id is None:
+        return
+    project = db.get(Project, project_id)
+    if project is not None:
+        project.last_activity_at = utcnow()
+        project.updated_at = utcnow()
 
 
 def build_project_context(
@@ -111,8 +122,7 @@ def create_project_source(
     if payload.source_type in {"google_drive", "google_calendar"}:
         if not (payload.external_id or "").strip():
             raise HTTPException(
-                status_code=422,
-                detail=f"{payload.source_type} external_id is required",
+                status_code=422, detail=f"{payload.source_type} external_id is required",
             )
 
     existing_stmt = select(ProjectSource.id).where(
@@ -173,6 +183,19 @@ def list_decisions(project_id: UUID, db: Session = Depends(get_db)) -> list[Deci
     return list(db.scalars(stmt).all())
 
 
+@router.patch("/decisions/{decision_id}", response_model=DecisionRead)
+def update_decision(decision_id: UUID, payload: DecisionUpdate, db: Session = Depends(get_db)) -> Decision:
+    decision = db.get(Decision, decision_id)
+    if decision is None:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(decision, field, value)
+    touch_project(db, decision.project_id)
+    db.commit()
+    db.refresh(decision)
+    return decision
+
+
 @router.post(
     "/projects/{project_id}/tasks",
     response_model=TaskRead,
@@ -210,10 +233,7 @@ def update_task(task_id: UUID, payload: TaskUpdate, db: Session = Depends(get_db
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(task, field, value)
     task.updated_at = utcnow()
-    if task.project_id:
-        project = db.get(Project, task.project_id)
-        if project:
-            project.last_activity_at = utcnow()
+    touch_project(db, task.project_id)
     db.commit()
     db.refresh(task)
     return task
@@ -307,6 +327,24 @@ def list_context_items(project_id: UUID, db: Session = Depends(get_db)) -> list[
         .order_by(ContextItem.importance.desc(), ContextItem.updated_at.desc())
     )
     return list(db.scalars(stmt).all())
+
+
+@router.patch("/context-items/{item_id}", response_model=ContextItemRead)
+def update_context_item(
+    item_id: UUID,
+    payload: ContextItemUpdate,
+    db: Session = Depends(get_db),
+) -> ContextItem:
+    item = db.get(ContextItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Context item not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, field, value)
+    item.updated_at = utcnow()
+    touch_project(db, item.project_id)
+    db.commit()
+    db.refresh(item)
+    return item
 
 
 @router.post("/context/build", response_model=ContextPackage)
