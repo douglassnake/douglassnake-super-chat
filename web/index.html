@@ -7,6 +7,7 @@
   <title>Super Chat · Segundo Cérebro</title>
   <link rel="stylesheet" href="/app/styles.css" />
   <link rel="stylesheet" href="/app/operations.css" />
+  <link rel="stylesheet" href="/app/onboarding.css" />
 </head>
 <body>
   <div class="shell">
@@ -41,6 +42,7 @@
           <p>Memória, contexto e continuidade de projetos.</p>
         </div>
         <div class="action-row">
+          <button id="smart-project-button" class="button ghost" type="button">Projeto + GitHub</button>
           <button id="new-project-button" class="button primary" type="button">Novo projeto</button>
           <button id="refresh-button" class="button ghost" type="button">Atualizar</button>
           <button class="button ghost" type="button" onclick="window.superchatLogout()">Sair</button>
@@ -92,6 +94,7 @@
             <div class="action-row">
               <button id="continue-button" class="button primary" type="button">Continuar projeto</button>
               <button id="github-sync-button" class="button ghost hidden" type="button">Sincronizar GitHub</button>
+              <button id="github-onboarding-button" class="button ghost hidden" type="button">Preparar onboarding</button>
             </div>
 
             <div class="context-controls">
@@ -171,6 +174,53 @@
     </form>
   </dialog>
 
+  <dialog id="smart-project-dialog" class="modal onboarding-modal">
+    <form id="smart-project-form" class="modal-card">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">ONBOARDING INTELIGENTE</span>
+          <h2>Novo projeto + GitHub</h2>
+        </div>
+        <button id="smart-project-close" class="icon-button" type="button" aria-label="Fechar">×</button>
+      </div>
+      <div class="onboarding-callout">
+        <strong>Revisão humana obrigatória</strong>
+        <p>O GitHub será sincronizado, mas decisões e tarefas sugeridas só entram na memória depois da sua aprovação.</p>
+      </div>
+      <div class="onboarding-form">
+        <label>Nome<input id="smart-project-name" required /></label>
+        <label>Slug<input id="smart-project-slug" required /></label>
+        <label>Status<select id="smart-project-status"><option value="active">active</option><option value="planning">planning</option><option value="implementation">implementation</option><option value="paused">paused</option></select></label>
+        <label>Prioridade<input id="smart-project-priority" type="number" value="80" min="-1000" max="1000" /></label>
+        <label class="full">Descrição<textarea id="smart-project-description"></textarea></label>
+        <label class="full">Próxima ação<textarea id="smart-project-next-action"></textarea></label>
+        <label class="full">Repositório GitHub opcional<input id="smart-project-repository" placeholder="owner/repository" /><small>Não informe token. A credencial permanece somente no servidor.</small></label>
+      </div>
+      <div class="modal-actions">
+        <button id="smart-project-cancel" class="button ghost" type="button">Cancelar</button>
+        <button id="smart-project-save" class="button primary" type="submit">Criar e preparar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="onboarding-review-dialog" class="modal onboarding-modal">
+    <div class="modal-card">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">REVISÃO DE ONBOARDING</span>
+          <h2>Aprovar sugestões do GitHub</h2>
+        </div>
+        <button id="onboarding-review-close" class="icon-button" type="button" aria-label="Fechar">×</button>
+      </div>
+      <div id="onboarding-review-content" class="onboarding-review-content"></div>
+      <div class="modal-actions">
+        <button id="onboarding-discard" class="button danger" type="button">Descartar sugestões</button>
+        <button id="onboarding-review-cancel" class="button ghost" type="button">Revisar depois</button>
+        <button id="onboarding-apply" class="button primary" type="button">Aplicar sugestões</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="delta-dialog" class="modal">
     <form method="dialog" class="modal-card">
       <div class="modal-heading">
@@ -192,5 +242,6 @@
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="/app/session.js"></script>
   <script src="/app/app.js" defer></script>
+  <script src="/app/onboarding.js" defer></script>
 </body>
 </html>
