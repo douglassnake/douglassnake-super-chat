@@ -65,7 +65,7 @@ class FakeGitHubReader:
                 "display_title": "pytest",
                 "status": "completed",
                 "conclusion": "failure",
-                "head_branch": "feature/prod",
+                "head_branch": "main",
                 "head_sha": "abc123456789",
                 "updated_at": "2026-09-29T12:30:00Z",
                 "html_url": f"https://github.com/{repository}/actions/runs/99",
@@ -136,6 +136,7 @@ def test_github_onboarding_requires_review_before_memory_changes(
     assert payload["requires_review"] is True
     assert payload["suggested_decisions"] == 1
     assert payload["suggested_tasks"] == 3
+    assert payload["current_failed_workflows"] == 1
     assert payload["delta"]["status"] == "pending"
     assert payload["sync"]["created_events"] == 4
 
@@ -163,7 +164,7 @@ def test_github_onboarding_requires_review_before_memory_changes(
     applied_payload = applied.json()
     assert len(applied_payload["created_decision_ids"]) == 1
     assert len(applied_payload["created_task_ids"]) == 3
-    assert applied_payload["project_next_action"] == "Investigar falhas recentes de CI"
+    assert applied_payload["project_next_action"] == "Investigar falhas atuais de CI"
 
     with SessionFactory() as db:
         assert db.scalar(select(func.count(Decision.id))) == 1
@@ -171,7 +172,7 @@ def test_github_onboarding_requires_review_before_memory_changes(
         assert db.scalar(select(func.count(SessionSummary.id))) == 1
         project_row = db.get(Project, project_uuid)
         assert project_row is not None
-        assert project_row.next_action == "Investigar falhas recentes de CI"
+        assert project_row.next_action == "Investigar falhas atuais de CI"
 
 
 def test_github_onboarding_requires_active_source(onboarding_client: tuple[TestClient, sessionmaker]) -> None:
