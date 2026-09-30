@@ -65,6 +65,25 @@
 .graph-relation { padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02); font-size: .68rem; line-height: 1.35; color: #c5d1de; cursor: pointer; }
 .graph-relation:hover { border-color: rgba(100,217,180,.28); }
 
+/* M11.1.1 — refinamento visual: mais hierarquia, conexões mais legíveis e menos sobreposição. */
+.graph-edge { stroke: rgba(151,174,197,.48); stroke-width: 1.55; }
+.graph-edge.highlighted { stroke: rgba(100,217,180,.95); stroke-width: 2.6; filter: drop-shadow(0 0 4px rgba(100,217,180,.22)); }
+.graph-node circle { stroke: rgba(255,255,255,.38); stroke-width: 1.6; }
+.graph-node.project circle { r: 23px; stroke-width: 2.5; filter: drop-shadow(0 0 12px rgba(100,217,180,.28)); }
+.graph-node.source circle { r: 12px; }
+.graph-node.decision circle { r: 11px; }
+.graph-node.task circle, .graph-node.memory circle, .graph-node.delta circle { r: 10px; }
+.graph-node:not(.project) text { opacity: .20; font-size: 10px; transition: opacity .14s ease, font-size .14s ease; }
+.graph-node:hover text, .graph-node.selected text, .graph-node.neighbor text { opacity: 1; font-size: 11px; }
+.graph-node.project text { opacity: 1; font-size: 14px; font-weight: 850; stroke-width: 5px; }
+.graph-node:hover circle { stroke: rgba(255,255,255,.9); stroke-width: 2.4; }
+.graph-node.selected circle { stroke: #fff; stroke-width: 3.4; filter: drop-shadow(0 0 10px rgba(255,255,255,.18)); }
+.graph-node.neighbor circle { stroke: rgba(255,255,255,.78); stroke-width: 2.2; }
+.graph-node.dimmed { opacity: .1; }
+.graph-canvas-wrap { background: radial-gradient(circle at 50% 50%, rgba(100,217,180,.065), transparent 36%), radial-gradient(circle at 50% 50%, rgba(109,168,255,.025), transparent 62%), #07121b; }
+.graph-sidebar.right { background: rgba(4,12,18,.36); }
+.graph-inspector-empty { opacity: .82; }
+
 @media (max-width: 1200px) {
   .graph-layout { grid-template-columns: 180px minmax(0, 1fr); }
   .graph-sidebar.right { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); }
