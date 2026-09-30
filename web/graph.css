@@ -21,6 +21,7 @@
 .graph-filter input { accent-color: var(--accent); }
 .graph-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .graph-dot.project { background: #64d9b4; }
+.graph-dot.entity { background: #65d6e8; }
 .graph-dot.task { background: #6da8ff; }
 .graph-dot.decision { background: #f2c96d; }
 .graph-dot.memory { background: #b78cff; }
@@ -29,17 +30,21 @@
 .graph-scope { margin-top: 20px; }
 .graph-scope label { display: block; margin-bottom: 6px; color: var(--muted); font-size: .68rem; }
 .graph-scope select { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 8px 9px; color: var(--text); background: #08131d; }
+.graph-relation-create { width: 100%; margin-top: 9px; }
 .graph-help { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: .7rem; line-height: 1.5; }
 
 .graph-canvas-wrap { position: relative; min-width: 0; min-height: 650px; overflow: hidden; background: radial-gradient(circle at 50% 50%, rgba(100,217,180,.045), transparent 42%), #07121b; }
 .graph-svg { display: block; width: 100%; height: 650px; user-select: none; touch-action: none; cursor: grab; }
 .graph-svg.panning { cursor: grabbing; }
 .graph-edge { stroke: rgba(151,174,197,.28); stroke-width: 1.2; transition: opacity .16s ease, stroke .16s ease, stroke-width .16s ease; }
+.graph-edge.semantic { stroke: rgba(101,214,232,.62); stroke-dasharray: 5 4; }
 .graph-edge.highlighted { stroke: rgba(100,217,180,.78); stroke-width: 2; }
+.graph-edge.semantic.highlighted { stroke: rgba(101,214,232,.98); stroke-dasharray: none; }
 .graph-edge.dimmed { opacity: .09; }
 .graph-node { cursor: pointer; transition: opacity .16s ease; }
 .graph-node circle { stroke: rgba(255,255,255,.26); stroke-width: 1.5; filter: drop-shadow(0 4px 9px rgba(0,0,0,.34)); }
 .graph-node.project circle { fill: #64d9b4; }
+.graph-node.entity circle { fill: #65d6e8; }
 .graph-node.task circle { fill: #6da8ff; }
 .graph-node.decision circle { fill: #f2c96d; }
 .graph-node.memory circle { fill: #b78cff; }
@@ -62,15 +67,18 @@
 .graph-inspector-section span { display: block; margin-bottom: 6px; color: #6f849a; font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
 .graph-inspector-section p { margin: 0; color: #bdcbd9; font-size: .73rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .graph-relation-list { display: grid; gap: 6px; }
-.graph-relation { padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02); font-size: .68rem; line-height: 1.35; color: #c5d1de; cursor: pointer; }
+.graph-relation-row { display: flex; gap: 5px; align-items: stretch; }
+.graph-relation { flex: 1 1 auto; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02); font-size: .68rem; line-height: 1.35; color: #c5d1de; cursor: pointer; text-align: left; }
 .graph-relation:hover { border-color: rgba(100,217,180,.28); }
+.graph-relation-remove { flex: 0 0 28px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,111,125,.06); color: #ff9aa4; cursor: pointer; }
+.graph-relation-remove:hover { border-color: rgba(255,111,125,.45); background: rgba(255,111,125,.12); }
 
 /* M11.1.1 — refinamento visual: mais hierarquia, conexões mais legíveis e menos sobreposição. */
 .graph-edge { stroke: rgba(151,174,197,.48); stroke-width: 1.55; }
 .graph-edge.highlighted { stroke: rgba(100,217,180,.95); stroke-width: 2.6; filter: drop-shadow(0 0 4px rgba(100,217,180,.22)); }
 .graph-node circle { stroke: rgba(255,255,255,.38); stroke-width: 1.6; }
 .graph-node.project circle { r: 23px; stroke-width: 2.5; filter: drop-shadow(0 0 12px rgba(100,217,180,.28)); }
-.graph-node.source circle { r: 12px; }
+.graph-node.entity circle, .graph-node.source circle { r: 12px; }
 .graph-node.decision circle { r: 11px; }
 .graph-node.task circle, .graph-node.memory circle, .graph-node.delta circle { r: 10px; }
 .graph-node:not(.project) text { opacity: .20; font-size: 10px; transition: opacity .14s ease, font-size .14s ease; }

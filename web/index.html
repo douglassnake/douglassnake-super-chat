@@ -165,7 +165,7 @@
           <div>
             <span class="eyebrow">MAPA DO SEGUNDO CÉREBRO</span>
             <h2>Grafo de conhecimento</h2>
-            <p>Visualize projetos, tarefas, decisões, memórias e fontes como uma rede. Fontes compartilhadas convergem no mesmo nó para revelar conexões entre projetos.</p>
+            <p>Visualize projetos, tarefas, decisões, memórias, fontes e entidades como uma rede. Relações semânticas mostram como cada projeto usa, depende ou roda sobre outros elementos.</p>
           </div>
           <div class="graph-stats" aria-label="Resumo do grafo">
             <div class="graph-stat"><span>Projetos</span><strong id="graph-project-count">—</strong></div>
@@ -179,6 +179,7 @@
             <h3>Exibir</h3>
             <div class="graph-filter-list">
               <label class="graph-filter"><input type="checkbox" data-graph-type="project" checked disabled /><span class="graph-dot project"></span>Projetos</label>
+              <label class="graph-filter"><input type="checkbox" data-graph-type="entity" checked /><span class="graph-dot entity"></span>Entidades</label>
               <label class="graph-filter"><input type="checkbox" data-graph-type="task" checked /><span class="graph-dot task"></span>Tarefas</label>
               <label class="graph-filter"><input type="checkbox" data-graph-type="decision" checked /><span class="graph-dot decision"></span>Decisões</label>
               <label class="graph-filter"><input type="checkbox" data-graph-type="memory" checked /><span class="graph-dot memory"></span>Memórias</label>
@@ -191,6 +192,7 @@
                 <option value="all">Todos os projetos</option>
                 <option value="selected">Projeto selecionado</option>
               </select>
+              <button id="graph-new-relation" class="button ghost compact graph-relation-create" type="button">+ Relação</button>
             </div>
             <div class="graph-help">Clique em um nó para isolar sua vizinhança. Arraste o fundo para mover o mapa e use a roda do mouse para ampliar.</div>
           </aside>
@@ -276,6 +278,29 @@
         <button id="onboarding-apply" class="button primary" type="button">Aplicar sugestões</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="graph-relation-dialog" class="modal editor-modal">
+    <form id="graph-relation-form" class="modal-card">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">RELAÇÃO SEMÂNTICA</span>
+          <h2>Conectar projeto a uma entidade</h2>
+        </div>
+        <button id="graph-relation-close" class="icon-button" type="button" aria-label="Fechar">×</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-field full"><label for="graph-entity-name">Entidade</label><input id="graph-entity-name" required placeholder="Ex.: ZimaOS, Caddy, PostgreSQL" /></div>
+        <div class="form-field"><label for="graph-entity-kind">Tipo da entidade</label><select id="graph-entity-kind"><option value="infrastructure">Infraestrutura</option><option value="service">Serviço</option><option value="database">Banco de dados</option><option value="platform">Plataforma</option><option value="system">Sistema</option><option value="technology">Tecnologia</option><option value="organization">Organização</option><option value="person">Pessoa</option><option value="document">Documento</option><option value="other">Outro</option></select></div>
+        <div class="form-field"><label for="graph-relation-type">Relação</label><select id="graph-relation-type"><option value="uses">USES</option><option value="runs_on">RUNS_ON</option><option value="depends_on">DEPENDS_ON</option><option value="part_of">PART_OF</option><option value="created_from">CREATED_FROM</option><option value="supports">SUPPORTS</option><option value="blocks">BLOCKS</option><option value="implements">IMPLEMENTS</option><option value="decided_by">DECIDED_BY</option><option value="related_to">RELATED_TO</option></select></div>
+        <div class="form-field full"><label for="graph-entity-description">Descrição da entidade</label><textarea id="graph-entity-description" placeholder="Contexto estável sobre a entidade."></textarea></div>
+        <div class="form-field full"><label for="graph-relation-rationale">Por que estão conectados?</label><textarea id="graph-relation-rationale" placeholder="Ex.: hospeda os containers deste projeto."></textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button id="graph-relation-cancel" class="button ghost" type="button">Cancelar</button>
+        <button id="graph-relation-save" class="button primary" type="submit">Salvar relação</button>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="delta-dialog" class="modal">

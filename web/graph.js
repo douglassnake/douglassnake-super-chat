@@ -14,6 +14,7 @@
 
   const typeLabels = {
     project: "Projeto",
+    entity: "Entidade",
     task: "Tarefa",
     decision: "Decisão",
     memory: "Memória",
@@ -21,15 +22,29 @@
     delta: "Revisão pendente",
   };
 
+  const semanticRelationLabels = {
+    uses: "USES",
+    runs_on: "RUNS_ON",
+    depends_on: "DEPENDS_ON",
+    part_of: "PART_OF",
+    created_from: "CREATED_FROM",
+    supports: "SUPPORTS",
+    blocks: "BLOCKS",
+    implements: "IMPLEMENTS",
+    decided_by: "DECIDED_BY",
+    related_to: "RELATED_TO",
+  };
+
   const typeAngles = {
     source: -Math.PI / 2,
+    entity: -Math.PI / 4,
     task: 0,
     decision: Math.PI / 2,
     memory: Math.PI,
     delta: Math.PI * 0.75,
   };
 
-  const radii = { project: 17, source: 11, decision: 10, task: 9, memory: 9, delta: 9 };
+  const radii = { project: 17, entity: 11, source: 11, decision: 10, task: 9, memory: 9, delta: 9 };
 
   function notify(message, isError = false) {
     const toast = $("#toast");
@@ -51,6 +66,23 @@
       if (input.checked) enabled.add(input.dataset.graphType);
     });
     return enabled;
+  }
+
+  async function requestJson(path, options = {}) {
+    const response = await window.fetch(path, {
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      ...options,
+    });
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+      try {
+        const payload = await response.json();
+        if (payload.detail) detail = typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail);
+      } catch {}
+      throw new Error(detail);
+    }
+    if (response.status === 204) return null;
+    return response.json();
   }
 
   async function loadGraph() {
@@ -133,7 +165,7 @@
         const count = Math.min(6, siblings.length - ring * 6);
         const spread = Math.min(Math.PI * 0.9, Math.max(0, count - 1) * 0.5);
         const local = count <= 1 ? 0 : -spread / 2 + (slot * spread) / Math.max(1, count - 1);
-        const distance = 100 + ring * 58 + (type === "source" ? 14 : 0);
+        const distance = 100 + ring * 58 + (["source", "entity"].includes(type) ? 14 : 0);
         positions.set(node.id, {
           x: base.x + Math.cos(baseAngle + local) * distance,
           y: base.y + Math.sin(baseAngle + local) * distance,
@@ -198,12 +230,26 @@
   function contextText(node) {
     const metadata = node.metadata || {};
     if (node.type === "project") return metadata.description || metadata.next_action || `Prioridade ${metadata.priority ?? 0}`;
+    if (node.type === "entity") return metadata.description || `Entidade ${metadata.kind || node.subtitle || "sem tipo"}`;
     if (node.type === "task") return metadata.description || `Prioridade ${metadata.priority ?? 0}`;
     if (node.type === "decision") return metadata.body || metadata.rationale || "Decisão ativa";
     if (node.type === "memory") return metadata.content || `Importância ${metadata.importance ?? node.importance}`;
     if (node.type === "source") return metadata.external_id || metadata.url || node.subtitle || "Fonte vinculada";
     if (node.type === "delta") return metadata.summary || metadata.next_action || "Aguardando revisão";
     return "";
+  }
+
+  async function removeSemanticRelation(relationId) {
+    if (!relationId) return;
+    if (!window.confirm("Remover esta relação semântica do grafo?")) return;
+    try {
+      await requestJson(`/relations/${encodeURIComponent(relationId)}`, { method: "DELETE" });
+      state.selectedId = null;
+      await reloadGraph();
+      notify("Relação removida.");
+    } catch (error) {
+      notify(`Falha ao remover relação: ${error.message}`, true);
+    }
   }
 
   function renderInspector(node) {
@@ -249,12 +295,27 @@
       const otherId = edge.source === node.id ? edge.target : edge.source;
       const other = state.nodes.find((candidate) => candidate.id === otherId);
       if (!other) return;
+      const row = document.createElement("div");
+      row.className = "graph-relation-row";
       const button = document.createElement("button");
       button.type = "button";
       button.className = "graph-relation";
-      button.textContent = `${edge.label} · ${other.label}`;
+      const relationLabel = semanticRelationLabels[edge.type] || edge.label || edge.type;
+      button.textContent = `${relationLabel} · ${other.label}`;
+      if (edge.metadata?.rationale) button.title = edge.metadata.rationale;
       button.addEventListener("click", () => focusNode(other.id));
-      list.appendChild(button);
+      row.appendChild(button);
+      if (edge.semantic && edge.metadata?.relation_id) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "graph-relation-remove";
+        remove.textContent = "×";
+        remove.title = "Remover relação";
+        remove.setAttribute("aria-label", "Remover relação");
+        remove.addEventListener("click", () => removeSemanticRelation(edge.metadata.relation_id));
+        row.appendChild(remove);
+      }
+      list.appendChild(row);
     });
     if (!relations.length) {
       const empty = document.createElement("p");
@@ -323,11 +384,11 @@
         y1: source.y,
         x2: target.x,
         y2: target.y,
-        class: "graph-edge",
+        class: `graph-edge${edge.semantic ? " semantic" : ""}`,
       });
       line.dataset.edgeId = edge.id;
       const title = svgElement("title");
-      title.textContent = edge.label || edge.type;
+      title.textContent = semanticRelationLabels[edge.type] || edge.label || edge.type;
       line.appendChild(title);
       stage.appendChild(line);
     });
@@ -380,6 +441,57 @@
     }
   }
 
+  function openRelationDialog() {
+    const projectId = activeProjectId();
+    if (!projectId) {
+      notify("Selecione um projeto antes de criar uma relação.", true);
+      return;
+    }
+    const dialog = $("#graph-relation-dialog");
+    $("#graph-relation-form")?.reset();
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+
+  function closeRelationDialog() {
+    const dialog = $("#graph-relation-dialog");
+    if (dialog?.open) dialog.close();
+  }
+
+  async function submitRelation(event) {
+    event.preventDefault();
+    const projectId = activeProjectId();
+    if (!projectId) return;
+    const save = $("#graph-relation-save");
+    const original = save?.textContent;
+    if (save) {
+      save.disabled = true;
+      save.textContent = "Salvando…";
+    }
+    try {
+      const payload = {
+        entity_name: $("#graph-entity-name").value.trim(),
+        entity_kind: $("#graph-entity-kind").value,
+        relation_type: $("#graph-relation-type").value,
+        entity_description: $("#graph-entity-description").value.trim() || null,
+        rationale: $("#graph-relation-rationale").value.trim() || null,
+      };
+      await requestJson(`/projects/${encodeURIComponent(projectId)}/relations`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      closeRelationDialog();
+      await reloadGraph();
+      notify(`${semanticRelationLabels[payload.relation_type] || payload.relation_type} registrada.`);
+    } catch (error) {
+      notify(`Falha ao criar relação: ${error.message}`, true);
+    } finally {
+      if (save) {
+        save.disabled = false;
+        save.textContent = original || "Salvar relação";
+      }
+    }
+  }
+
   function showDashboard() {
     $("#stats")?.classList.remove("hidden");
     $(".workspace-grid")?.classList.remove("hidden");
@@ -402,6 +514,10 @@
   $("#graph-view-button")?.addEventListener("click", showGraph);
   $("#graph-scope")?.addEventListener("change", renderGraph);
   $("#graph-reset")?.addEventListener("click", resetView);
+  $("#graph-new-relation")?.addEventListener("click", openRelationDialog);
+  $("#graph-relation-form")?.addEventListener("submit", submitRelation);
+  $("#graph-relation-close")?.addEventListener("click", closeRelationDialog);
+  $("#graph-relation-cancel")?.addEventListener("click", closeRelationDialog);
   document.querySelectorAll("[data-graph-type]").forEach((input) => input.addEventListener("change", renderGraph));
   $("#project-nav")?.addEventListener("click", () => {
     if ($("#graph-scope")?.value !== "selected") return;

@@ -9,7 +9,22 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.knowledge_models import KnowledgeEntity, ProjectRelation
 from app.models import ContextItem, Decision, Project, ProjectSource, SessionDelta, Task
+
+
+SEMANTIC_RELATION_LABELS = {
+    "uses": "USES",
+    "runs_on": "RUNS_ON",
+    "depends_on": "DEPENDS_ON",
+    "part_of": "PART_OF",
+    "created_from": "CREATED_FROM",
+    "supports": "SUPPORTS",
+    "blocks": "BLOCKS",
+    "implements": "IMPLEMENTS",
+    "decided_by": "DECIDED_BY",
+    "related_to": "RELATED_TO",
+}
 
 
 def _node_id(kind: str, entity_id: UUID | str) -> str:
@@ -42,12 +57,7 @@ def _project_node(project: Project) -> dict[str, Any]:
 
 
 def build_knowledge_graph(db: Session) -> dict[str, Any]:
-    """Build a read-only graph from the records already persisted by Super Chat.
-
-    M11.1 deliberately derives connections from existing foreign keys instead of
-    introducing a relationship table. Explicit typed cross-project relationships
-    can be layered on top in M11.2 without changing this contract.
-    """
+    """Build the read-only graph from persisted operational and semantic records."""
 
     projects = list(
         db.scalars(
@@ -92,6 +102,13 @@ def build_knowledge_graph(db: Session) -> dict[str, Any]:
             select(SessionDelta)
             .where(SessionDelta.status == "pending")
             .order_by(SessionDelta.created_at.desc())
+        ).all()
+    )
+    semantic_relations = list(
+        db.scalars(
+            select(ProjectRelation)
+            .where(ProjectRelation.is_active.is_(True))
+            .order_by(ProjectRelation.relation_type.asc(), ProjectRelation.created_at.asc())
         ).all()
     )
 
@@ -196,9 +213,6 @@ def build_knowledge_graph(db: Session) -> dict[str, Any]:
             }
         )
 
-    # Sources are canonicalized by source type + external identifier/URL. If the
-    # same repository/document is attached to more than one project, the graph
-    # naturally reveals that shared connection instead of drawing duplicates.
     source_nodes: dict[str, dict[str, Any]] = {}
     for source in sources:
         if source.project_id not in project_ids:
@@ -269,6 +283,57 @@ def build_knowledge_graph(db: Session) -> dict[str, Any]:
                 "label": "revisão",
             }
         )
+
+    # M11.2: explicit semantic entities are canonical records shared across projects.
+    # A single Caddy/ZimaOS/PostgreSQL node can therefore reveal cross-project use.
+    semantic_nodes: dict[UUID, dict[str, Any]] = {}
+    for relation in semantic_relations:
+        if relation.project_id not in project_ids:
+            continue
+        entity = db.get(KnowledgeEntity, relation.entity_id)
+        if entity is None or not entity.is_active:
+            continue
+        if entity.id not in semantic_nodes:
+            semantic_nodes[entity.id] = {
+                "id": _node_id("entity", entity.id),
+                "entity_id": str(entity.id),
+                "type": "entity",
+                "label": entity.name,
+                "subtitle": entity.kind,
+                "project_id": str(relation.project_id),
+                "project_ids": [str(relation.project_id)],
+                "importance": 0.78,
+                "metadata": {
+                    "kind": entity.kind,
+                    "canonical_key": entity.canonical_key,
+                    "description": entity.description,
+                    "metadata": entity.metadata_json,
+                },
+            }
+        else:
+            project_id = str(relation.project_id)
+            if project_id not in semantic_nodes[entity.id]["project_ids"]:
+                semantic_nodes[entity.id]["project_ids"].append(project_id)
+
+        edges.append(
+            {
+                "id": f"edge:semantic:{relation.id}",
+                "source": _node_id("project", relation.project_id),
+                "target": _node_id("entity", entity.id),
+                "type": relation.relation_type,
+                "label": SEMANTIC_RELATION_LABELS.get(
+                    relation.relation_type,
+                    relation.relation_type.upper(),
+                ),
+                "semantic": True,
+                "metadata": {
+                    "relation_id": str(relation.id),
+                    "rationale": relation.rationale,
+                    "source_ref": relation.source_ref,
+                },
+            }
+        )
+    nodes.extend(semantic_nodes.values())
 
     counts = Counter(node["type"] for node in nodes)
     return {
