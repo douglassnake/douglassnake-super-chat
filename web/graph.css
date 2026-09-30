@@ -98,3 +98,29 @@
   .graph-canvas-wrap, .graph-svg { min-height: 520px; height: 520px; }
   .graph-sidebar.right { min-height: 180px; }
 }
+
+/* M11.1.2 — limpeza de rótulos após validação visual em produção. */
+.graph-node:not(.project) text {
+  opacity: 0;
+}
+.graph-node:hover text,
+.graph-node.selected text,
+.graph-node.neighbor text {
+  opacity: 1;
+}
+.graph-node.project text {
+  text-anchor: middle;
+  transform: translate(-25px, -34px);
+  letter-spacing: -.01em;
+}
+.graph-node.project:hover text,
+.graph-node.project.selected text,
+.graph-node.project.neighbor text {
+  transform: translate(-25px, -36px);
+}
+.graph-edge {
+  stroke-width: 1.7;
+}
+.graph-edge.highlighted {
+  stroke-width: 2.8;
+}
