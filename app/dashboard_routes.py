@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.dashboard import dashboard_payload, project_overview
 from app.database import get_db
+from app.knowledge_graph import build_knowledge_graph
 
 router = APIRouter(tags=["dashboard"])
 
@@ -12,6 +13,11 @@ router = APIRouter(tags=["dashboard"])
 @router.get("/dashboard")
 def get_dashboard(db: Session = Depends(get_db)) -> dict:
     return dashboard_payload(db)
+
+
+@router.get("/graph")
+def get_knowledge_graph(db: Session = Depends(get_db)) -> dict:
+    return build_knowledge_graph(db)
 
 
 @router.get("/projects/{project_id}/overview")
