@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/app/operations.css" />
   <link rel="stylesheet" href="/app/onboarding.css" />
   <link rel="stylesheet" href="/app/graph.css" />
+  <link rel="stylesheet" href="/app/graph_suggestions.css" />
 </head>
 <body>
   <div class="shell">
@@ -195,6 +196,7 @@
               </select>
               <button id="graph-new-relation" class="button ghost compact graph-relation-create" type="button">+ Relação</button>
               <button id="graph-new-document" class="button ghost compact graph-relation-create" type="button">+ Documento</button>
+              <button id="graph-discover-relations" class="button ghost compact" type="button">Descobrir conexões</button>
             </div>
             <div class="graph-help">Clique em um nó para isolar sua vizinhança. Arraste o fundo para mover o mapa e use a roda do mouse para ampliar.</div>
           </aside>
@@ -330,6 +332,24 @@
     </form>
   </dialog>
 
+  <dialog id="graph-suggestion-dialog" class="modal graph-suggestion-dialog">
+    <div class="modal-card">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">DESCOBERTA DE CONEXÕES</span>
+          <h2>Revisar conexões sugeridas</h2>
+        </div>
+        <button id="graph-suggestion-close" class="icon-button" type="button" aria-label="Fechar">×</button>
+      </div>
+      <div id="graph-suggestion-content" class="graph-suggestion-content"></div>
+      <div class="modal-actions">
+        <button id="graph-suggestion-discard" class="button danger" type="button">Descartar sugestões</button>
+        <button id="graph-suggestion-later" class="button ghost" type="button">Revisar depois</button>
+        <button id="graph-suggestion-apply" class="button primary" type="button">Aplicar selecionadas</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="delta-dialog" class="modal">
     <form method="dialog" class="modal-card">
       <div class="modal-heading">
@@ -353,5 +373,6 @@
   <script src="/app/app.js" defer></script>
   <script src="/app/onboarding.js" defer></script>
   <script src="/app/graph.js" defer></script>
+  <script src="/app/graph_suggestions.js" defer></script>
 </body>
 </html>
