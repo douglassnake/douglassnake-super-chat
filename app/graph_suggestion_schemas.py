@@ -31,7 +31,7 @@ class GraphSuggestionBatchRead(BaseModel):
 
 
 class GraphSuggestionApplyRequest(BaseModel):
-    selected_indexes: list[int] = Field(default_factory=list)
+    selected_indexes: list[int] = Field(min_length=1)
 
 
 class GraphSuggestionApplyResult(BaseModel):
