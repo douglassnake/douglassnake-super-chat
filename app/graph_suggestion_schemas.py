@@ -10,6 +10,7 @@ class GraphRelationSuggestion(BaseModel):
     entity_name: str
     entity_kind: str
     entity_key: str
+    entity_description: str | None = None
     relation_type: SemanticRelationType
     rationale: str
     evidence: str
