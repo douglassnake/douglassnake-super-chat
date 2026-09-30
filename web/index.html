@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/app/styles.css" />
   <link rel="stylesheet" href="/app/operations.css" />
   <link rel="stylesheet" href="/app/onboarding.css" />
+  <link rel="stylesheet" href="/app/graph.css" />
 </head>
 <body>
   <div class="shell">
@@ -42,6 +43,10 @@
           <p>Memória, contexto e continuidade de projetos.</p>
         </div>
         <div class="action-row">
+          <div class="view-switch" role="group" aria-label="Visualização">
+            <button id="dashboard-view-button" class="button active-view" type="button">Painel</button>
+            <button id="graph-view-button" class="button" type="button">Grafo</button>
+          </div>
           <button id="smart-project-button" class="button ghost" type="button">Projeto + GitHub</button>
           <button id="new-project-button" class="button primary" type="button">Novo projeto</button>
           <button id="refresh-button" class="button ghost" type="button">Atualizar</button>
@@ -154,6 +159,58 @@
           </div>
         </div>
       </section>
+
+      <section id="knowledge-graph-panel" class="panel graph-shell hidden" aria-label="Mapa do Segundo Cérebro">
+        <div class="graph-header">
+          <div>
+            <span class="eyebrow">MAPA DO SEGUNDO CÉREBRO</span>
+            <h2>Grafo de conhecimento</h2>
+            <p>Visualize projetos, tarefas, decisões, memórias e fontes como uma rede. Fontes compartilhadas convergem no mesmo nó para revelar conexões entre projetos.</p>
+          </div>
+          <div class="graph-stats" aria-label="Resumo do grafo">
+            <div class="graph-stat"><span>Projetos</span><strong id="graph-project-count">—</strong></div>
+            <div class="graph-stat"><span>Nós</span><strong id="graph-node-count">—</strong></div>
+            <div class="graph-stat"><span>Conexões</span><strong id="graph-edge-count">—</strong></div>
+          </div>
+        </div>
+
+        <div class="graph-layout">
+          <aside class="graph-sidebar left">
+            <h3>Exibir</h3>
+            <div class="graph-filter-list">
+              <label class="graph-filter"><input type="checkbox" data-graph-type="project" checked disabled /><span class="graph-dot project"></span>Projetos</label>
+              <label class="graph-filter"><input type="checkbox" data-graph-type="task" checked /><span class="graph-dot task"></span>Tarefas</label>
+              <label class="graph-filter"><input type="checkbox" data-graph-type="decision" checked /><span class="graph-dot decision"></span>Decisões</label>
+              <label class="graph-filter"><input type="checkbox" data-graph-type="memory" checked /><span class="graph-dot memory"></span>Memórias</label>
+              <label class="graph-filter"><input type="checkbox" data-graph-type="source" checked /><span class="graph-dot source"></span>Fontes / arquivos</label>
+              <label class="graph-filter"><input type="checkbox" data-graph-type="delta" checked /><span class="graph-dot delta"></span>Revisões pendentes</label>
+            </div>
+            <div class="graph-scope">
+              <label for="graph-scope">Escopo</label>
+              <select id="graph-scope">
+                <option value="all">Todos os projetos</option>
+                <option value="selected">Projeto selecionado</option>
+              </select>
+            </div>
+            <div class="graph-help">Clique em um nó para isolar sua vizinhança. Arraste o fundo para mover o mapa e use a roda do mouse para ampliar.</div>
+          </aside>
+
+          <div id="graph-canvas-wrap" class="graph-canvas-wrap">
+            <svg id="knowledge-graph-svg" class="graph-svg" role="img" aria-label="Grafo de conhecimento"></svg>
+            <div id="graph-empty" class="graph-empty hidden">Nenhum registro corresponde aos filtros atuais.</div>
+            <div class="graph-controls">
+              <button id="graph-reset" class="button ghost compact" type="button">Recentralizar</button>
+            </div>
+          </div>
+
+          <aside class="graph-sidebar right">
+            <h3>Conexões</h3>
+            <div id="graph-inspector">
+              <p class="graph-inspector-empty">Clique em um nó para destacar suas conexões e inspecionar o contexto relacionado.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -243,5 +300,6 @@
   <script src="/app/session.js"></script>
   <script src="/app/app.js" defer></script>
   <script src="/app/onboarding.js" defer></script>
+  <script src="/app/graph.js" defer></script>
 </body>
 </html>
