@@ -1,0 +1,216 @@
+(() => {
+  const $ = (selector) => document.querySelector(selector);
+  const relationLabels = {
+    uses: "USES",
+    runs_on: "RUNS_ON",
+    depends_on: "DEPENDS_ON",
+    part_of: "PART_OF",
+    created_from: "CREATED_FROM",
+    supports: "SUPPORTS",
+    blocks: "BLOCKS",
+    implements: "IMPLEMENTS",
+    decided_by: "DECIDED_BY",
+    related_to: "RELATED_TO",
+    has_document: "HAS_DOCUMENT",
+  };
+
+  function notify(message, isError = false) {
+    const toast = $("#toast");
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.toggle("error", isError);
+    toast.classList.remove("hidden");
+    window.clearTimeout(notify.timer);
+    notify.timer = window.setTimeout(() => toast.classList.add("hidden"), 4500);
+  }
+
+  function activeProjectId() {
+    return document.querySelector(".nav-item.active")?.dataset.projectId || null;
+  }
+
+  async function api(path, options = {}) {
+    const response = await window.fetch(path, {
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      ...options,
+    });
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+      try {
+        const body = await response.json();
+        detail = body.detail || detail;
+      } catch {}
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    return response.status === 204 ? null : response.json();
+  }
+
+  function setBusy(button, busy, label) {
+    if (!button) return;
+    if (busy) {
+      button.dataset.previousText = button.textContent;
+      button.textContent = label || "Analisando…";
+      button.disabled = true;
+    } else {
+      button.textContent = button.dataset.previousText || button.textContent;
+      delete button.dataset.previousText;
+      button.disabled = false;
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function renderBatch(batch) {
+    const content = $("#graph-suggestion-content");
+    const suggestions = batch.suggestions || [];
+    const cards = suggestions.map((item, index) => {
+      const confidence = Math.round(Number(item.confidence || 0) * 100);
+      return `
+        <label class="graph-suggestion-card">
+          <input type="checkbox" data-suggestion-index="${index}" checked />
+          <div class="graph-suggestion-body">
+            <div class="graph-suggestion-title">
+              <strong>${escapeHtml(relationLabels[item.relation_type] || item.relation_type.toUpperCase())} · ${escapeHtml(item.entity_name)}</strong>
+              <span>${confidence}%</span>
+            </div>
+            <p>${escapeHtml(item.rationale)}</p>
+            <small><b>Evidência:</b> ${escapeHtml(item.evidence)}</small>
+            ${item.source_ref ? `<small>Fonte: ${escapeHtml(item.source_ref)}</small>` : ""}
+          </div>
+        </label>
+      `;
+    }).join("");
+
+    content.innerHTML = `
+      <div class="graph-suggestion-callout">
+        <strong>Revisão humana obrigatória</strong>
+        <p>Nenhuma conexão abaixo entra no grafo até você aplicar explicitamente as sugestões selecionadas.</p>
+      </div>
+      <div class="graph-suggestion-summary">${escapeHtml(batch.summary)}</div>
+      <div class="graph-suggestion-list">
+        ${cards || '<div class="graph-suggestion-empty">Nenhuma conexão nova encontrada. Relações existentes e duplicatas foram ignoradas.</div>'}
+      </div>
+    `;
+    const apply = $("#graph-suggestion-apply");
+    if (apply) apply.disabled = suggestions.length === 0;
+  }
+
+  function openBatch(batch) {
+    const dialog = $("#graph-suggestion-dialog");
+    dialog.dataset.batchId = batch.id;
+    renderBatch(batch);
+    if (!dialog.open) dialog.showModal();
+  }
+
+  async function pendingBatch(projectId) {
+    const batches = await api(`/projects/${encodeURIComponent(projectId)}/graph/suggestions?status=pending`);
+    return batches[0] || null;
+  }
+
+  async function syncButton() {
+    const button = $("#graph-discover-relations");
+    if (!button) return;
+    const projectId = activeProjectId();
+    if (!projectId) {
+      button.textContent = "Descobrir conexões";
+      return;
+    }
+    try {
+      const pending = await pendingBatch(projectId);
+      if (pending) {
+        const count = (pending.suggestions || []).length;
+        button.textContent = count ? `Revisar sugestões (${count})` : "Revisar análise";
+        button.dataset.pendingBatchId = pending.id;
+      } else {
+        button.textContent = "Descobrir conexões";
+        delete button.dataset.pendingBatchId;
+      }
+    } catch {
+      button.textContent = "Descobrir conexões";
+      delete button.dataset.pendingBatchId;
+    }
+  }
+
+  $("#graph-discover-relations")?.addEventListener("click", async (event) => {
+    const projectId = activeProjectId();
+    if (!projectId) {
+      notify("Selecione um projeto antes de descobrir conexões.", true);
+      return;
+    }
+    const button = event.currentTarget;
+    setBusy(button, true, "Analisando…");
+    try {
+      let batch = await pendingBatch(projectId);
+      if (!batch) {
+        batch = await api(`/projects/${encodeURIComponent(projectId)}/graph/suggestions`, { method: "POST" });
+      }
+      openBatch(batch);
+    } catch (error) {
+      notify(`Falha ao descobrir conexões: ${error.message}`, true);
+    } finally {
+      setBusy(button, false);
+      await syncButton();
+    }
+  });
+
+  $("#graph-suggestion-close")?.addEventListener("click", () => $("#graph-suggestion-dialog")?.close());
+  $("#graph-suggestion-later")?.addEventListener("click", () => $("#graph-suggestion-dialog")?.close());
+
+  $("#graph-suggestion-discard")?.addEventListener("click", async () => {
+    const dialog = $("#graph-suggestion-dialog");
+    const batchId = dialog?.dataset.batchId;
+    if (!batchId) return;
+    const button = $("#graph-suggestion-discard");
+    setBusy(button, true, "Descartando…");
+    try {
+      await api(`/graph-suggestions/${encodeURIComponent(batchId)}/discard`, { method: "POST" });
+      dialog.close();
+      notify("Sugestões de conexão descartadas.");
+      await syncButton();
+    } catch (error) {
+      notify(`Falha ao descartar sugestões: ${error.message}`, true);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  $("#graph-suggestion-apply")?.addEventListener("click", async () => {
+    const dialog = $("#graph-suggestion-dialog");
+    const batchId = dialog?.dataset.batchId;
+    if (!batchId) return;
+    const selected = [...dialog.querySelectorAll("[data-suggestion-index]:checked")]
+      .map((input) => Number(input.dataset.suggestionIndex))
+      .filter(Number.isInteger);
+    if (!selected.length) {
+      notify("Selecione pelo menos uma conexão para aplicar.", true);
+      return;
+    }
+    const button = $("#graph-suggestion-apply");
+    setBusy(button, true, "Aplicando…");
+    try {
+      const result = await api(`/graph-suggestions/${encodeURIComponent(batchId)}/apply`, {
+        method: "POST",
+        body: JSON.stringify({ selected_indexes: selected }),
+      });
+      dialog.close();
+      notify(`${result.applied_count} conexão(ões) aplicada(s); ${result.skipped_count} ignorada(s).`);
+      $("#refresh-button")?.click();
+      await syncButton();
+    } catch (error) {
+      notify(`Falha ao aplicar conexões: ${error.message}`, true);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  $("#graph-view-button")?.addEventListener("click", () => window.setTimeout(syncButton, 100));
+  $("#project-nav")?.addEventListener("click", () => window.setTimeout(syncButton, 120));
+  $("#refresh-button")?.addEventListener("click", () => window.setTimeout(syncButton, 180));
+  window.setTimeout(syncButton, 300);
+})();
