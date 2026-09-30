@@ -1,0 +1,18 @@
+.graph-suggestion-dialog .modal-card { width: min(760px, calc(100vw - 36px)); max-height: min(820px, calc(100vh - 36px)); }
+.graph-suggestion-content { display: grid; gap: 14px; overflow: auto; padding-right: 4px; }
+.graph-suggestion-callout { padding: 13px 14px; border: 1px solid rgba(242,201,109,.34); border-radius: 12px; background: rgba(242,201,109,.07); }
+.graph-suggestion-callout strong { display: block; margin-bottom: 4px; color: #f2c96d; }
+.graph-suggestion-callout p { margin: 0; color: #c8d3df; font-size: .78rem; line-height: 1.5; }
+.graph-suggestion-summary { color: #c8d3df; font-size: .8rem; line-height: 1.55; }
+.graph-suggestion-list { display: grid; gap: 9px; }
+.graph-suggestion-card { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.025); cursor: pointer; }
+.graph-suggestion-card:hover { border-color: rgba(101,214,232,.35); background: rgba(101,214,232,.035); }
+.graph-suggestion-card > input { margin-top: 3px; accent-color: var(--accent); }
+.graph-suggestion-body { min-width: 0; }
+.graph-suggestion-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.graph-suggestion-title strong { font-size: .82rem; }
+.graph-suggestion-title span { flex: 0 0 auto; padding: 3px 6px; border-radius: 999px; color: #87d9c0; background: rgba(100,217,180,.08); font-size: .66rem; }
+.graph-suggestion-body p { margin: 7px 0; color: #bdcbd9; font-size: .75rem; line-height: 1.45; }
+.graph-suggestion-body small { display: block; margin-top: 5px; color: #7f93a8; font-size: .67rem; line-height: 1.45; overflow-wrap: anywhere; }
+.graph-suggestion-empty { padding: 18px; border: 1px dashed var(--line); border-radius: 11px; color: var(--muted); font-size: .78rem; text-align: center; }
+#graph-discover-relations { width: 100%; margin-top: 9px; border-color: rgba(101,214,232,.26); }

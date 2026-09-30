@@ -16,6 +16,7 @@ from app.execution_routes import router as execution_router
 from app.executor_routes import router as executor_router
 from app.git_change_routes import router as git_change_router
 from app.github_verification_routes import router as github_verification_router
+from app.graph_suggestion_routes import router as graph_suggestion_router
 from app.handoff_routes import router as handoff_router
 from app.observability import ObservabilityMiddleware
 from app.onboarding_routes import router as onboarding_router
@@ -51,6 +52,7 @@ app.include_router(ops_router)
 app.include_router(router)
 app.include_router(session_router)
 app.include_router(dashboard_router)
+app.include_router(graph_suggestion_router)
 app.include_router(onboarding_router)
 app.include_router(evaluation_router)
 app.include_router(agent_router)
