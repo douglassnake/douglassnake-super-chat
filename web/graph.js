@@ -14,11 +14,12 @@
 
   const typeLabels = {
     project: "Projeto",
+    document: "Documento / arquivo",
     entity: "Entidade",
     task: "Tarefa",
     decision: "Decisão",
     memory: "Memória",
-    source: "Fonte / arquivo",
+    source: "Fonte externa",
     delta: "Revisão pendente",
   };
 
@@ -33,10 +34,12 @@
     implements: "IMPLEMENTS",
     decided_by: "DECIDED_BY",
     related_to: "RELATED_TO",
+    has_document: "HAS_DOCUMENT",
   };
 
   const typeAngles = {
     source: -Math.PI / 2,
+    document: -Math.PI / 3,
     entity: -Math.PI / 4,
     task: 0,
     decision: Math.PI / 2,
@@ -44,7 +47,7 @@
     delta: Math.PI * 0.75,
   };
 
-  const radii = { project: 17, entity: 11, source: 11, decision: 10, task: 9, memory: 9, delta: 9 };
+  const radii = { project: 17, document: 11, entity: 11, source: 11, decision: 10, task: 9, memory: 9, delta: 9 };
 
   function notify(message, isError = false) {
     const toast = $("#toast");
@@ -165,7 +168,7 @@
         const count = Math.min(6, siblings.length - ring * 6);
         const spread = Math.min(Math.PI * 0.9, Math.max(0, count - 1) * 0.5);
         const local = count <= 1 ? 0 : -spread / 2 + (slot * spread) / Math.max(1, count - 1);
-        const distance = 100 + ring * 58 + (["source", "entity"].includes(type) ? 14 : 0);
+        const distance = 100 + ring * 58 + (["source", "entity", "document"].includes(type) ? 14 : 0);
         positions.set(node.id, {
           x: base.x + Math.cos(baseAngle + local) * distance,
           y: base.y + Math.sin(baseAngle + local) * distance,
@@ -230,6 +233,7 @@
   function contextText(node) {
     const metadata = node.metadata || {};
     if (node.type === "project") return metadata.description || metadata.next_action || `Prioridade ${metadata.priority ?? 0}`;
+    if (node.type === "document") return metadata.description || metadata.url || metadata.external_id || `Documento ${metadata.document_type || node.subtitle || "sem tipo"}`;
     if (node.type === "entity") return metadata.description || `Entidade ${metadata.kind || node.subtitle || "sem tipo"}`;
     if (node.type === "task") return metadata.description || `Prioridade ${metadata.priority ?? 0}`;
     if (node.type === "decision") return metadata.body || metadata.rationale || "Decisão ativa";
@@ -283,6 +287,26 @@
     context.textContent = contextText(node);
     contextSection.append(contextLabel, context);
     container.appendChild(contextSection);
+
+    if (node.type === "document" && node.metadata?.url) {
+      try {
+        const url = new URL(node.metadata.url, window.location.origin);
+        if (["http:", "https:"].includes(url.protocol)) {
+          const documentSection = document.createElement("div");
+          documentSection.className = "graph-inspector-section";
+          const documentLabel = document.createElement("span");
+          documentLabel.textContent = "Documento";
+          const link = document.createElement("a");
+          link.className = "graph-document-link";
+          link.href = url.href;
+          link.target = "_blank";
+          link.rel = "noreferrer";
+          link.textContent = "Abrir documento ↗";
+          documentSection.append(documentLabel, link);
+          container.appendChild(documentSection);
+        }
+      } catch {}
+    }
 
     const relations = state.edges.filter((edge) => edge.source === node.id || edge.target === node.id);
     const relationsSection = document.createElement("div");
@@ -492,6 +516,70 @@
     }
   }
 
+  function openDocumentDialog() {
+    const projectId = activeProjectId();
+    if (!projectId) {
+      notify("Selecione um projeto antes de adicionar um documento.", true);
+      return;
+    }
+    const dialog = $("#graph-document-dialog");
+    $("#graph-document-form")?.reset();
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+
+  function closeDocumentDialog() {
+    const dialog = $("#graph-document-dialog");
+    if (dialog?.open) dialog.close();
+  }
+
+  async function submitDocument(event) {
+    event.preventDefault();
+    const projectId = activeProjectId();
+    if (!projectId) return;
+    const save = $("#graph-document-save");
+    const original = save?.textContent;
+    if (save) {
+      save.disabled = true;
+      save.textContent = "Salvando…";
+    }
+    try {
+      const title = $("#graph-document-title").value.trim();
+      const externalId = $("#graph-document-external-id").value.trim();
+      const url = $("#graph-document-url").value.trim();
+      const documentType = $("#graph-document-type").value;
+      const sourceType = $("#graph-document-source").value;
+      const payload = {
+        entity_name: title,
+        entity_kind: "document",
+        entity_key: externalId || url || title,
+        relation_type: "has_document",
+        entity_description: $("#graph-document-description").value.trim() || null,
+        entity_metadata_json: {
+          document_type: documentType,
+          source_type: sourceType,
+          external_id: externalId || null,
+          url: url || null,
+        },
+        rationale: $("#graph-document-rationale").value.trim() || null,
+        source_ref: externalId || url || null,
+      };
+      await requestJson(`/projects/${encodeURIComponent(projectId)}/relations`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      closeDocumentDialog();
+      await reloadGraph();
+      notify("Documento conectado ao projeto.");
+    } catch (error) {
+      notify(`Falha ao adicionar documento: ${error.message}`, true);
+    } finally {
+      if (save) {
+        save.disabled = false;
+        save.textContent = original || "Adicionar documento";
+      }
+    }
+  }
+
   function showDashboard() {
     $("#stats")?.classList.remove("hidden");
     $(".workspace-grid")?.classList.remove("hidden");
@@ -518,6 +606,10 @@
   $("#graph-relation-form")?.addEventListener("submit", submitRelation);
   $("#graph-relation-close")?.addEventListener("click", closeRelationDialog);
   $("#graph-relation-cancel")?.addEventListener("click", closeRelationDialog);
+  $("#graph-new-document")?.addEventListener("click", openDocumentDialog);
+  $("#graph-document-form")?.addEventListener("submit", submitDocument);
+  $("#graph-document-close")?.addEventListener("click", closeDocumentDialog);
+  $("#graph-document-cancel")?.addEventListener("click", closeDocumentDialog);
   document.querySelectorAll("[data-graph-type]").forEach((input) => input.addEventListener("change", renderGraph));
   $("#project-nav")?.addEventListener("click", () => {
     if ($("#graph-scope")?.value !== "selected") return;
