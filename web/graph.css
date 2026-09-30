@@ -21,6 +21,7 @@
 .graph-filter input { accent-color: var(--accent); }
 .graph-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .graph-dot.project { background: #64d9b4; }
+.graph-dot.document { background: #7bc8ff; }
 .graph-dot.entity { background: #65d6e8; }
 .graph-dot.task { background: #6da8ff; }
 .graph-dot.decision { background: #f2c96d; }
@@ -44,6 +45,7 @@
 .graph-node { cursor: pointer; transition: opacity .16s ease; }
 .graph-node circle { stroke: rgba(255,255,255,.26); stroke-width: 1.5; filter: drop-shadow(0 4px 9px rgba(0,0,0,.34)); }
 .graph-node.project circle { fill: #64d9b4; }
+.graph-node.document circle { fill: #7bc8ff; }
 .graph-node.entity circle { fill: #65d6e8; }
 .graph-node.task circle { fill: #6da8ff; }
 .graph-node.decision circle { fill: #f2c96d; }
@@ -66,6 +68,8 @@
 .graph-inspector-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
 .graph-inspector-section span { display: block; margin-bottom: 6px; color: #6f849a; font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
 .graph-inspector-section p { margin: 0; color: #bdcbd9; font-size: .73rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.graph-document-link { display: inline-flex; padding: 7px 9px; border: 1px solid rgba(123,200,255,.28); border-radius: 8px; color: #a9dcff; background: rgba(123,200,255,.05); font-size: .72rem; text-decoration: none; }
+.graph-document-link:hover { border-color: rgba(123,200,255,.55); background: rgba(123,200,255,.1); }
 .graph-relation-list { display: grid; gap: 6px; }
 .graph-relation-row { display: flex; gap: 5px; align-items: stretch; }
 .graph-relation { flex: 1 1 auto; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02); font-size: .68rem; line-height: 1.35; color: #c5d1de; cursor: pointer; text-align: left; }
@@ -78,7 +82,7 @@
 .graph-edge.highlighted { stroke: rgba(100,217,180,.95); stroke-width: 2.6; filter: drop-shadow(0 0 4px rgba(100,217,180,.22)); }
 .graph-node circle { stroke: rgba(255,255,255,.38); stroke-width: 1.6; }
 .graph-node.project circle { r: 23px; stroke-width: 2.5; filter: drop-shadow(0 0 12px rgba(100,217,180,.28)); }
-.graph-node.entity circle, .graph-node.source circle { r: 12px; }
+.graph-node.document circle, .graph-node.entity circle, .graph-node.source circle { r: 12px; }
 .graph-node.decision circle { r: 11px; }
 .graph-node.task circle, .graph-node.memory circle, .graph-node.delta circle { r: 10px; }
 .graph-node:not(.project) text { opacity: .20; font-size: 10px; transition: opacity .14s ease, font-size .14s ease; }
