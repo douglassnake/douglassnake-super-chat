@@ -24,6 +24,7 @@ SEMANTIC_RELATION_LABELS = {
     "implements": "IMPLEMENTS",
     "decided_by": "DECIDED_BY",
     "related_to": "RELATED_TO",
+    "has_document": "HAS_DOCUMENT",
 }
 
 
@@ -284,8 +285,10 @@ def build_knowledge_graph(db: Session) -> dict[str, Any]:
             }
         )
 
-    # M11.2: explicit semantic entities are canonical records shared across projects.
-    # A single Caddy/ZimaOS/PostgreSQL node can therefore reveal cross-project use.
+    # M11.2/M11.3: semantic entities are canonical records shared across projects.
+    # Documents remain stored as knowledge entities but are rendered as first-class
+    # document nodes, preserving convergence when the same file is linked to more
+    # than one project.
     semantic_nodes: dict[UUID, dict[str, Any]] = {}
     for relation in semantic_relations:
         if relation.project_id not in project_ids:
@@ -293,21 +296,32 @@ def build_knowledge_graph(db: Session) -> dict[str, Any]:
         entity = db.get(KnowledgeEntity, relation.entity_id)
         if entity is None or not entity.is_active:
             continue
+        node_type = "document" if entity.kind == "document" else "entity"
+        node_id = _node_id(node_type, entity.id)
+        entity_metadata = dict(entity.metadata_json or {})
         if entity.id not in semantic_nodes:
             semantic_nodes[entity.id] = {
-                "id": _node_id("entity", entity.id),
+                "id": node_id,
                 "entity_id": str(entity.id),
-                "type": "entity",
+                "type": node_type,
                 "label": entity.name,
-                "subtitle": entity.kind,
+                "subtitle": (
+                    entity_metadata.get("document_type")
+                    or entity_metadata.get("source_type")
+                    or entity.kind
+                ),
                 "project_id": str(relation.project_id),
                 "project_ids": [str(relation.project_id)],
-                "importance": 0.78,
+                "importance": 0.82 if node_type == "document" else 0.78,
                 "metadata": {
                     "kind": entity.kind,
                     "canonical_key": entity.canonical_key,
                     "description": entity.description,
-                    "metadata": entity.metadata_json,
+                    "document_type": entity_metadata.get("document_type"),
+                    "source_type": entity_metadata.get("source_type"),
+                    "external_id": entity_metadata.get("external_id"),
+                    "url": entity_metadata.get("url"),
+                    "metadata": entity_metadata,
                 },
             }
         else:
@@ -319,7 +333,7 @@ def build_knowledge_graph(db: Session) -> dict[str, Any]:
             {
                 "id": f"edge:semantic:{relation.id}",
                 "source": _node_id("project", relation.project_id),
-                "target": _node_id("entity", entity.id),
+                "target": node_id,
                 "type": relation.relation_type,
                 "label": SEMANTIC_RELATION_LABELS.get(
                     relation.relation_type,
