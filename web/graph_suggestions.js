@@ -116,7 +116,7 @@
 
   async function pendingBatch(projectId) {
     const batches = await api(`/projects/${encodeURIComponent(projectId)}/graph/suggestions?status=pending`);
-    return batches[0] || null;
+    return batches.find((batch) => (batch.suggestions || []).length > 0) || null;
   }
 
   async function syncButton() {
