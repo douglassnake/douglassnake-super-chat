@@ -9,7 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.graph_suggestion_schemas import GraphRelationSuggestion
-from app.knowledge_models import GraphSuggestionBatch, KnowledgeEntity, ProjectRelation
+from app.knowledge_models import (
+    GraphSuggestionBatch,
+    KnowledgeEntity,
+    KnowledgeRelation,
+    ProjectRelation,
+)
 from app.models import ContextItem, Decision, Project, ProjectSource, Task, utcnow
 
 
@@ -34,6 +39,10 @@ def canonical_key(value: str) -> str:
 
 def normalized_text(value: str) -> str:
     return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii").lower()
+
+
+def normalized_source_type(value: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", normalized_text(value or "")).strip("_")
 
 
 def _snippet(text: str, needle: str, radius: int = 115) -> str:
@@ -134,6 +143,22 @@ def _project_evidence(db: Session, project: Project) -> list[EvidenceRecord]:
     return records
 
 
+def _project_documents(db: Session, project: Project) -> list[tuple[KnowledgeEntity, ProjectRelation]]:
+    result: list[tuple[KnowledgeEntity, ProjectRelation]] = []
+    relations = db.scalars(
+        select(ProjectRelation).where(
+            ProjectRelation.project_id == project.id,
+            ProjectRelation.is_active.is_(True),
+            ProjectRelation.relation_type == "has_document",
+        )
+    ).all()
+    for relation in relations:
+        entity = db.get(KnowledgeEntity, relation.entity_id)
+        if entity is not None and entity.is_active and entity.kind == "document":
+            result.append((entity, relation))
+    return result
+
+
 def discover_relation_suggestions(db: Session, project: Project) -> list[GraphRelationSuggestion]:
     active_relations = list(
         db.scalars(
@@ -144,11 +169,25 @@ def discover_relation_suggestions(db: Session, project: Project) -> list[GraphRe
         ).all()
     )
     already_related_entity_ids = {relation.entity_id for relation in active_relations}
+    active_knowledge_relations = list(
+        db.scalars(select(KnowledgeRelation).where(KnowledgeRelation.is_active.is_(True))).all()
+    )
     suggestions: list[GraphRelationSuggestion] = []
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str, str, str, str]] = set()
 
     def add_suggestion(suggestion: GraphRelationSuggestion) -> None:
-        key = (suggestion.entity_kind, suggestion.entity_key, suggestion.relation_type)
+        subject_key = (
+            str(suggestion.subject_entity_id)
+            if suggestion.subject_type == "entity"
+            else str(project.id)
+        )
+        key = (
+            suggestion.subject_type,
+            subject_key,
+            suggestion.entity_kind,
+            suggestion.entity_key,
+            suggestion.relation_type,
+        )
         if key in seen:
             return
         existing_entity = db.scalar(
@@ -158,8 +197,17 @@ def discover_relation_suggestions(db: Session, project: Project) -> list[GraphRe
                 KnowledgeEntity.is_active.is_(True),
             )
         )
-        if existing_entity is not None and existing_entity.id in already_related_entity_ids:
-            return
+        if suggestion.subject_type == "project":
+            if existing_entity is not None and existing_entity.id in already_related_entity_ids:
+                return
+        elif suggestion.subject_entity_id is not None and existing_entity is not None:
+            if any(
+                relation.source_entity_id == suggestion.subject_entity_id
+                and relation.target_entity_id == existing_entity.id
+                and relation.relation_type == suggestion.relation_type
+                for relation in active_knowledge_relations
+            ):
+                return
         seen.add(key)
         suggestions.append(suggestion)
 
@@ -225,8 +273,79 @@ def discover_relation_suggestions(db: Session, project: Project) -> list[GraphRe
             )
             break
 
-    suggestions.sort(key=lambda item: (-item.confidence, item.entity_name.lower(), item.relation_type))
-    return suggestions[:12]
+    # M11.5: documents become active subjects in discovery instead of passive project attachments.
+    # Source metadata creates high-confidence CREATED_FROM links, while explicit mentions in
+    # persisted document metadata/description create MENTIONS links to known entities.
+    for document, project_relation in _project_documents(db, project):
+        metadata = dict(document.metadata_json or {})
+        document_text = "\n".join(
+            str(part)
+            for part in (
+                document.name,
+                document.description,
+                project_relation.rationale,
+                metadata.get("source_type"),
+                metadata.get("external_id"),
+                metadata.get("url"),
+            )
+            if part
+        )
+        explicit_target: tuple[str, str] | None = None
+        source_type = normalized_source_type(metadata.get("source_type"))
+        mapped = SOURCE_ENTITY_MAP.get(source_type)
+        if mapped is not None:
+            name, kind, key, description = mapped
+            explicit_target = (kind, key)
+            add_suggestion(
+                GraphRelationSuggestion(
+                    subject_type="entity",
+                    subject_entity_id=document.id,
+                    subject_label=document.name,
+                    entity_name=name,
+                    entity_kind=kind,
+                    entity_key=key,
+                    entity_description=description,
+                    relation_type="created_from",
+                    rationale=f"{document.name} está registrado como documento originado em {name}.",
+                    evidence=_snippet(document_text, metadata.get("source_type") or name),
+                    source_ref=f"document:{document.id}",
+                    confidence=0.97,
+                )
+            )
+
+        normalized_document = normalized_text(document_text)
+        for entity in entities:
+            if explicit_target == (entity.kind, entity.canonical_key):
+                continue
+            entity_name = normalized_text(entity.name).strip()
+            if len(entity_name) < 3 or entity_name not in normalized_document:
+                continue
+            add_suggestion(
+                GraphRelationSuggestion(
+                    subject_type="entity",
+                    subject_entity_id=document.id,
+                    subject_label=document.name,
+                    entity_name=entity.name,
+                    entity_kind=entity.kind,
+                    entity_key=entity.canonical_key,
+                    entity_description=entity.description,
+                    relation_type="mentions",
+                    rationale=f"{document.name} menciona {entity.name} em seu contexto persistido.",
+                    evidence=_snippet(document_text, entity.name),
+                    source_ref=f"document:{document.id}",
+                    confidence=0.88,
+                )
+            )
+
+    suggestions.sort(
+        key=lambda item: (
+            -item.confidence,
+            item.subject_label or project.name,
+            item.entity_name.lower(),
+            item.relation_type,
+        )
+    )
+    return suggestions[:16]
 
 
 def create_suggestion_batch(db: Session, project: Project) -> GraphSuggestionBatch:
@@ -238,8 +357,12 @@ def create_suggestion_batch(db: Session, project: Project) -> GraphSuggestionBat
         )
         .order_by(GraphSuggestionBatch.created_at.desc())
     )
-    if existing is not None:
+    if existing is not None and existing.suggestions_json:
         return existing
+    if existing is not None:
+        existing.status = "superseded"
+        existing.discarded_at = utcnow()
+        db.flush()
 
     suggestions = discover_relation_suggestions(db, project)
     source_refs = sorted({item.source_ref for item in suggestions if item.source_ref})
@@ -268,6 +391,32 @@ def create_suggestion_batch(db: Session, project: Project) -> GraphSuggestionBat
     return batch
 
 
+def _target_entity(db: Session, suggestion: GraphRelationSuggestion) -> KnowledgeEntity:
+    entity = db.scalar(
+        select(KnowledgeEntity).where(
+            KnowledgeEntity.kind == suggestion.entity_kind,
+            KnowledgeEntity.canonical_key == suggestion.entity_key,
+        )
+    )
+    if entity is None:
+        entity = KnowledgeEntity(
+            kind=suggestion.entity_kind,
+            canonical_key=suggestion.entity_key,
+            name=suggestion.entity_name,
+            description=suggestion.entity_description,
+            metadata_json={"discovered_by": "graph-suggestions"},
+            is_active=True,
+        )
+        db.add(entity)
+        db.flush()
+    else:
+        entity.is_active = True
+        if suggestion.entity_description and not entity.description:
+            entity.description = suggestion.entity_description
+        entity.updated_at = utcnow()
+    return entity
+
+
 def apply_suggestion_batch(
     db: Session,
     batch: GraphSuggestionBatch,
@@ -285,28 +434,53 @@ def apply_suggestion_batch(
     skipped = 0
     for index in selected:
         suggestion = suggestions[index]
-        entity = db.scalar(
-            select(KnowledgeEntity).where(
-                KnowledgeEntity.kind == suggestion.entity_kind,
-                KnowledgeEntity.canonical_key == suggestion.entity_key,
+        entity = _target_entity(db, suggestion)
+
+        if suggestion.subject_type == "entity":
+            if suggestion.subject_entity_id is None:
+                skipped += 1
+                continue
+            subject = db.get(KnowledgeEntity, suggestion.subject_entity_id)
+            if subject is None or not subject.is_active or subject.id == entity.id:
+                skipped += 1
+                continue
+            project_link = db.scalar(
+                select(ProjectRelation).where(
+                    ProjectRelation.project_id == batch.project_id,
+                    ProjectRelation.entity_id == subject.id,
+                    ProjectRelation.is_active.is_(True),
+                )
             )
-        )
-        if entity is None:
-            entity = KnowledgeEntity(
-                kind=suggestion.entity_kind,
-                canonical_key=suggestion.entity_key,
-                name=suggestion.entity_name,
-                description=suggestion.entity_description,
-                metadata_json={"discovered_by": "m11.4"},
-                is_active=True,
+            if project_link is None:
+                skipped += 1
+                continue
+            relation = db.scalar(
+                select(KnowledgeRelation).where(
+                    KnowledgeRelation.source_entity_id == subject.id,
+                    KnowledgeRelation.target_entity_id == entity.id,
+                    KnowledgeRelation.relation_type == suggestion.relation_type,
+                )
             )
-            db.add(entity)
-            db.flush()
-        else:
-            entity.is_active = True
-            if suggestion.entity_description and not entity.description:
-                entity.description = suggestion.entity_description
-            entity.updated_at = utcnow()
+            if relation is not None and relation.is_active:
+                skipped += 1
+                continue
+            if relation is None:
+                relation = KnowledgeRelation(
+                    source_entity_id=subject.id,
+                    target_entity_id=entity.id,
+                    relation_type=suggestion.relation_type,
+                    rationale=suggestion.rationale,
+                    source_ref=suggestion.source_ref,
+                    is_active=True,
+                )
+                db.add(relation)
+            else:
+                relation.is_active = True
+                relation.rationale = suggestion.rationale
+                relation.source_ref = suggestion.source_ref
+                relation.updated_at = utcnow()
+            applied += 1
+            continue
 
         relation = db.scalar(
             select(ProjectRelation).where(

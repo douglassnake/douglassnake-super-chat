@@ -17,6 +17,8 @@ SemanticRelationType = Literal[
     "decided_by",
     "related_to",
     "has_document",
+    "mentions",
+    "describes",
 ]
 
 
