@@ -12,6 +12,8 @@
     decided_by: "DECIDED_BY",
     related_to: "RELATED_TO",
     has_document: "HAS_DOCUMENT",
+    mentions: "MENTIONS",
+    describes: "DESCRIBES",
   };
 
   function notify(message, isError = false) {
@@ -71,12 +73,16 @@
     const suggestions = batch.suggestions || [];
     const cards = suggestions.map((item, index) => {
       const confidence = Math.round(Number(item.confidence || 0) * 100);
+      const relation = relationLabels[item.relation_type] || item.relation_type.toUpperCase();
+      const subject = item.subject_type === "entity" && item.subject_label
+        ? `${escapeHtml(item.subject_label)} → `
+        : "";
       return `
         <label class="graph-suggestion-card">
           <input type="checkbox" data-suggestion-index="${index}" checked />
           <div class="graph-suggestion-body">
             <div class="graph-suggestion-title">
-              <strong>${escapeHtml(relationLabels[item.relation_type] || item.relation_type.toUpperCase())} · ${escapeHtml(item.entity_name)}</strong>
+              <strong>${subject}${escapeHtml(relation)} · ${escapeHtml(item.entity_name)}</strong>
               <span>${confidence}%</span>
             </div>
             <p>${escapeHtml(item.rationale)}</p>
