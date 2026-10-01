@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from hashlib import sha1
 from typing import Any
@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.knowledge_models import KnowledgeEntity, ProjectRelation
+from app.knowledge_models import KnowledgeEntity, KnowledgeRelation, ProjectRelation
 from app.models import ContextItem, Decision, Project, ProjectSource, SessionDelta, Task
 
 
@@ -25,6 +25,8 @@ SEMANTIC_RELATION_LABELS = {
     "decided_by": "DECIDED_BY",
     "related_to": "RELATED_TO",
     "has_document": "HAS_DOCUMENT",
+    "mentions": "MENTIONS",
+    "describes": "DESCRIBES",
 }
 
 
@@ -105,11 +107,18 @@ def build_knowledge_graph(db: Session) -> dict[str, Any]:
             .order_by(SessionDelta.created_at.desc())
         ).all()
     )
-    semantic_relations = list(
+    project_relations = list(
         db.scalars(
             select(ProjectRelation)
             .where(ProjectRelation.is_active.is_(True))
             .order_by(ProjectRelation.relation_type.asc(), ProjectRelation.created_at.asc())
+        ).all()
+    )
+    knowledge_relations = list(
+        db.scalars(
+            select(KnowledgeRelation)
+            .where(KnowledgeRelation.is_active.is_(True))
+            .order_by(KnowledgeRelation.relation_type.asc(), KnowledgeRelation.created_at.asc())
         ).all()
     )
 
@@ -285,55 +294,75 @@ def build_knowledge_graph(db: Session) -> dict[str, Any]:
             }
         )
 
-    # M11.2/M11.3: semantic entities are canonical records shared across projects.
-    # Documents remain stored as knowledge entities but are rendered as first-class
-    # document nodes, preserving convergence when the same file is linked to more
-    # than one project.
+    # Semantic entities are canonical records. M11.5 propagates project scope through
+    # entity-to-entity relations so document/entity connections remain visible when a
+    # target is known only through the document that mentions it.
+    entity_project_ids: dict[UUID, set[UUID]] = defaultdict(set)
+    for relation in project_relations:
+        if relation.project_id in project_ids:
+            entity_project_ids[relation.entity_id].add(relation.project_id)
+
+    changed = True
+    while changed:
+        changed = False
+        for relation in knowledge_relations:
+            source_projects = entity_project_ids.get(relation.source_entity_id, set())
+            target_projects = entity_project_ids.get(relation.target_entity_id, set())
+            combined = source_projects | target_projects
+            if not combined:
+                continue
+            for entity_id in (relation.source_entity_id, relation.target_entity_id):
+                before = len(entity_project_ids[entity_id])
+                entity_project_ids[entity_id].update(combined)
+                if len(entity_project_ids[entity_id]) != before:
+                    changed = True
+
     semantic_nodes: dict[UUID, dict[str, Any]] = {}
-    for relation in semantic_relations:
+    for entity_id, scoped_projects in entity_project_ids.items():
+        entity = db.get(KnowledgeEntity, entity_id)
+        if entity is None or not entity.is_active:
+            continue
+        entity_metadata = dict(entity.metadata_json or {})
+        node_type = "document" if entity.kind == "document" else "entity"
+        project_id_values = sorted(str(value) for value in scoped_projects)
+        semantic_nodes[entity.id] = {
+            "id": _node_id(node_type, entity.id),
+            "entity_id": str(entity.id),
+            "type": node_type,
+            "label": entity.name,
+            "subtitle": (
+                entity_metadata.get("document_type")
+                or entity_metadata.get("source_type")
+                or entity.kind
+            ),
+            "project_id": project_id_values[0] if project_id_values else None,
+            "project_ids": project_id_values,
+            "importance": 0.82 if node_type == "document" else 0.78,
+            "metadata": {
+                "kind": entity.kind,
+                "canonical_key": entity.canonical_key,
+                "description": entity.description,
+                "document_type": entity_metadata.get("document_type"),
+                "source_type": entity_metadata.get("source_type"),
+                "external_id": entity_metadata.get("external_id"),
+                "url": entity_metadata.get("url"),
+                "metadata": entity_metadata,
+            },
+        }
+    nodes.extend(semantic_nodes.values())
+
+    for relation in project_relations:
         if relation.project_id not in project_ids:
             continue
         entity = db.get(KnowledgeEntity, relation.entity_id)
-        if entity is None or not entity.is_active:
+        node = semantic_nodes.get(relation.entity_id)
+        if entity is None or node is None:
             continue
-        node_type = "document" if entity.kind == "document" else "entity"
-        node_id = _node_id(node_type, entity.id)
-        entity_metadata = dict(entity.metadata_json or {})
-        if entity.id not in semantic_nodes:
-            semantic_nodes[entity.id] = {
-                "id": node_id,
-                "entity_id": str(entity.id),
-                "type": node_type,
-                "label": entity.name,
-                "subtitle": (
-                    entity_metadata.get("document_type")
-                    or entity_metadata.get("source_type")
-                    or entity.kind
-                ),
-                "project_id": str(relation.project_id),
-                "project_ids": [str(relation.project_id)],
-                "importance": 0.82 if node_type == "document" else 0.78,
-                "metadata": {
-                    "kind": entity.kind,
-                    "canonical_key": entity.canonical_key,
-                    "description": entity.description,
-                    "document_type": entity_metadata.get("document_type"),
-                    "source_type": entity_metadata.get("source_type"),
-                    "external_id": entity_metadata.get("external_id"),
-                    "url": entity_metadata.get("url"),
-                    "metadata": entity_metadata,
-                },
-            }
-        else:
-            project_id = str(relation.project_id)
-            if project_id not in semantic_nodes[entity.id]["project_ids"]:
-                semantic_nodes[entity.id]["project_ids"].append(project_id)
-
         edges.append(
             {
                 "id": f"edge:semantic:{relation.id}",
                 "source": _node_id("project", relation.project_id),
-                "target": node_id,
+                "target": node["id"],
                 "type": relation.relation_type,
                 "label": SEMANTIC_RELATION_LABELS.get(
                     relation.relation_type,
@@ -342,12 +371,37 @@ def build_knowledge_graph(db: Session) -> dict[str, Any]:
                 "semantic": True,
                 "metadata": {
                     "relation_id": str(relation.id),
+                    "relation_scope": "project",
                     "rationale": relation.rationale,
                     "source_ref": relation.source_ref,
                 },
             }
         )
-    nodes.extend(semantic_nodes.values())
+
+    for relation in knowledge_relations:
+        source = semantic_nodes.get(relation.source_entity_id)
+        target = semantic_nodes.get(relation.target_entity_id)
+        if source is None or target is None:
+            continue
+        edges.append(
+            {
+                "id": f"edge:knowledge:{relation.id}",
+                "source": source["id"],
+                "target": target["id"],
+                "type": relation.relation_type,
+                "label": SEMANTIC_RELATION_LABELS.get(
+                    relation.relation_type,
+                    relation.relation_type.upper(),
+                ),
+                "semantic": True,
+                "metadata": {
+                    "relation_id": str(relation.id),
+                    "relation_scope": "knowledge",
+                    "rationale": relation.rationale,
+                    "source_ref": relation.source_ref,
+                },
+            }
+        )
 
     counts = Counter(node["type"] for node in nodes)
     return {
