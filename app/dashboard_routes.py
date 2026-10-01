@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.dashboard import dashboard_payload, project_overview
 from app.database import get_db
 from app.knowledge_graph import build_knowledge_graph
-from app.knowledge_models import KnowledgeEntity, ProjectRelation
+from app.knowledge_models import KnowledgeEntity, KnowledgeRelation, ProjectRelation
 from app.knowledge_schemas import KnowledgeEntityRead, ProjectRelationCreate, ProjectRelationRead
 from app.models import Project, utcnow
 
@@ -161,6 +161,17 @@ def delete_project_relation(relation_id: UUID, db: Session = Depends(get_db)) ->
     if project is not None:
         project.last_activity_at = utcnow()
         project.updated_at = utcnow()
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/knowledge-relations/{relation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_knowledge_relation(relation_id: UUID, db: Session = Depends(get_db)) -> Response:
+    relation = db.get(KnowledgeRelation, relation_id)
+    if relation is None:
+        raise HTTPException(status_code=404, detail="Knowledge relation not found")
+    relation.is_active = False
+    relation.updated_at = utcnow()
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
