@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -7,6 +8,9 @@ from app.knowledge_schemas import SemanticRelationType
 
 
 class GraphRelationSuggestion(BaseModel):
+    subject_type: Literal["project", "entity"] = "project"
+    subject_entity_id: UUID | None = None
+    subject_label: str | None = None
     entity_name: str
     entity_kind: str
     entity_key: str
