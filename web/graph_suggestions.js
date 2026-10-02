@@ -1,4 +1,5 @@
 (() => {
+  const SVG_NS = "http://www.w3.org/2000/svg";
   const $ = (selector) => document.querySelector(selector);
   const relationLabels = {
     uses: "USES",
@@ -187,6 +188,107 @@
     }
   }
 
+  function svgElement(name, attrs = {}) {
+    const element = document.createElementNS(SVG_NS, name);
+    Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, String(value)));
+    return element;
+  }
+
+  function ensureSemanticArrowMarker(svg) {
+    let marker = svg.querySelector("#graph-semantic-arrow");
+    if (marker) return marker;
+
+    let defs = svg.querySelector("defs[data-semantic-arrow-defs='true']");
+    if (!defs) {
+      defs = svgElement("defs", { "data-semantic-arrow-defs": "true" });
+      svg.insertBefore(defs, svg.firstChild);
+    }
+
+    marker = svgElement("marker", {
+      id: "graph-semantic-arrow",
+      viewBox: "0 0 8 8",
+      refX: 8,
+      refY: 4,
+      markerWidth: 7,
+      markerHeight: 7,
+      markerUnits: "userSpaceOnUse",
+      orient: "auto",
+    });
+    marker.appendChild(svgElement("path", {
+      d: "M 0 0 L 8 4 L 0 8 z",
+      fill: "rgba(101,214,232,.96)",
+    }));
+    defs.appendChild(marker);
+    return marker;
+  }
+
+  function translatedPoint(node) {
+    const transform = String(node?.getAttribute("transform") || "");
+    const match = transform.match(/translate\(\s*([-+]?\d*\.?\d+)\s*[ ,]\s*([-+]?\d*\.?\d+)\s*\)/);
+    if (!match) return null;
+    const x = Number(match[1]);
+    const y = Number(match[2]);
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  }
+
+  function targetNodeForLine(svg, x, y) {
+    let closest = null;
+    let distance = Number.POSITIVE_INFINITY;
+    svg.querySelectorAll(".graph-node").forEach((node) => {
+      const point = translatedPoint(node);
+      if (!point) return;
+      const candidateDistance = Math.hypot(point.x - x, point.y - y);
+      if (candidateDistance < distance) {
+        closest = node;
+        distance = candidateDistance;
+      }
+    });
+    return distance <= 1 ? closest : null;
+  }
+
+  function visualNodeRadius(node) {
+    const circle = node?.querySelector("circle");
+    if (!circle) return 10;
+    const computed = Number.parseFloat(window.getComputedStyle(circle).getPropertyValue("r"));
+    const declared = Number.parseFloat(circle.getAttribute("r"));
+    return Number.isFinite(computed) && computed > 0
+      ? computed
+      : Number.isFinite(declared) && declared > 0
+        ? declared
+        : 10;
+  }
+
+  function decorateSemanticEdges() {
+    const svg = $("#knowledge-graph-svg");
+    if (!svg) return;
+    const lines = [...svg.querySelectorAll(".graph-edge.semantic")]
+      .filter((line) => line.dataset.arrowDecorated !== "true");
+    if (!lines.length) return;
+
+    ensureSemanticArrowMarker(svg);
+    lines.forEach((line) => {
+      const x1 = Number(line.getAttribute("x1"));
+      const y1 = Number(line.getAttribute("y1"));
+      const x2 = Number(line.getAttribute("x2"));
+      const y2 = Number(line.getAttribute("y2"));
+      if (![x1, y1, x2, y2].every(Number.isFinite)) return;
+
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const length = Math.hypot(dx, dy);
+      const targetNode = targetNodeForLine(svg, x2, y2);
+      const targetRadius = visualNodeRadius(targetNode);
+      const offset = targetRadius + 4;
+      if (length > offset + 8) {
+        line.setAttribute("x2", String(x2 - (dx / length) * offset));
+        line.setAttribute("y2", String(y2 - (dy / length) * offset));
+      }
+      line.setAttribute("marker-end", "url(#graph-semantic-arrow)");
+      line.classList.add("directed");
+      line.dataset.arrowDecorated = "true";
+    });
+  }
+
   const graphInspector = $("#graph-inspector");
   if (graphInspector && window.MutationObserver) {
     const inspectorObserver = new MutationObserver(() => {
@@ -194,6 +296,16 @@
       directionalizeInspectorRelations.timer = window.setTimeout(directionalizeInspectorRelations, 0);
     });
     inspectorObserver.observe(graphInspector, { childList: true, subtree: true });
+  }
+
+  const graphSvg = $("#knowledge-graph-svg");
+  if (graphSvg && window.MutationObserver) {
+    const semanticEdgeObserver = new MutationObserver(() => {
+      window.clearTimeout(decorateSemanticEdges.timer);
+      decorateSemanticEdges.timer = window.setTimeout(decorateSemanticEdges, 0);
+    });
+    semanticEdgeObserver.observe(graphSvg, { childList: true, subtree: true });
+    window.setTimeout(decorateSemanticEdges, 0);
   }
 
   $("#graph-discover-relations")?.addEventListener("click", async (event) => {
