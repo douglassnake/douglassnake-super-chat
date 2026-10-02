@@ -143,6 +143,59 @@
     }
   }
 
+  let inspectorDirectionBusy = false;
+
+  async function directionalizeInspectorRelations() {
+    const inspector = $("#graph-inspector");
+    const selected = document.querySelector("#knowledge-graph-svg .graph-node.selected");
+    if (!inspector || !selected || inspectorDirectionBusy) return;
+    const buttons = [...inspector.querySelectorAll(".graph-relation")]
+      .filter((button) => button.dataset.directionApplied !== "true");
+    if (!buttons.length) return;
+
+    inspectorDirectionBusy = true;
+    try {
+      const graph = await api("/graph");
+      const nodes = new Map((graph.nodes || []).map((node) => [node.id, node]));
+      const selectedId = selected.dataset.nodeId;
+      const edges = (graph.edges || []).filter(
+        (edge) => edge.semantic && (edge.source === selectedId || edge.target === selectedId),
+      );
+
+      buttons.forEach((button) => {
+        const raw = String(button.textContent || "").trim();
+        const separator = raw.indexOf(" · ");
+        if (separator < 0) return;
+        const relationText = raw.slice(0, separator).trim();
+        const otherLabel = raw.slice(separator + 3).trim();
+        const edge = edges.find((candidate) => {
+          const label = relationLabels[candidate.type] || String(candidate.label || candidate.type || "").toUpperCase();
+          const otherId = candidate.source === selectedId ? candidate.target : candidate.source;
+          return label === relationText && nodes.get(otherId)?.label === otherLabel;
+        });
+        if (!edge) return;
+
+        button.textContent = edge.source === selectedId
+          ? `${relationText} → ${otherLabel}`
+          : `← ${relationText} · ${otherLabel}`;
+        button.dataset.directionApplied = "true";
+      });
+    } catch {
+      // Direction is presentation-only; the inspector remains usable if refresh fails.
+    } finally {
+      inspectorDirectionBusy = false;
+    }
+  }
+
+  const graphInspector = $("#graph-inspector");
+  if (graphInspector && window.MutationObserver) {
+    const inspectorObserver = new MutationObserver(() => {
+      window.clearTimeout(directionalizeInspectorRelations.timer);
+      directionalizeInspectorRelations.timer = window.setTimeout(directionalizeInspectorRelations, 0);
+    });
+    inspectorObserver.observe(graphInspector, { childList: true, subtree: true });
+  }
+
   $("#graph-discover-relations")?.addEventListener("click", async (event) => {
     const projectId = activeProjectId();
     if (!projectId) {
