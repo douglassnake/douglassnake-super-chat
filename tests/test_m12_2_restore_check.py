@@ -72,10 +72,23 @@ def test_restored_database_checks_schema_and_core_data() -> None:
     assert 'SELECT count(*) FROM knowledge_entities;' in script
 
 
-def test_database_credentials_remain_inside_database_container() -> None:
+def test_disposable_restore_runs_integration_readiness_inside_api_container() -> None:
+    script = script_text()
+
+    assert 'API_CONTAINER="${API_CONTAINER:-app-api-1}"' in script
+    assert 'API_RUNNING=' in script
+    assert 'RESTORE_CHECK_DB="$TEMP_DB"' in script
+    assert 'scripts/integration_readiness.py", "--database"' in script
+    assert 'restore-check: integration readiness passed' in script
+    assert 'make_url(env["DATABASE_URL"])' in script
+
+
+def test_database_credentials_are_not_exposed_as_host_arguments_or_logs() -> None:
     script = script_text()
 
     assert "POSTGRES_PASSWORD" in script
     assert "PGPASSWORD" in script
-    assert "DATABASE_URL" not in script
+    assert "-e DATABASE_URL=" not in script
     assert "--password" not in script
+    assert 'printf "%s" "$POSTGRES_PASSWORD"' not in script
+    assert 'echo "$POSTGRES_PASSWORD"' not in script

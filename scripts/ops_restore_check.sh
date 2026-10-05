@@ -5,6 +5,7 @@ umask 077
 
 BACKUP_ROOT="${BACKUP_ROOT:-/DATA/Backup/superchat/automatic}"
 DB_CONTAINER="${DB_CONTAINER:-app-db-1}"
+API_CONTAINER="${API_CONTAINER:-app-api-1}"
 BACKUP_PREFIX="auto-superchat"
 RESTORE_DB_PREFIX="superchat_restore_check"
 
@@ -38,8 +39,11 @@ command -v docker >/dev/null 2>&1 || die "docker command not found"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum command not found"
 [[ -d "$BACKUP_ROOT" ]] || die "backup root does not exist: $BACKUP_ROOT"
 
-RUNNING="$(docker inspect -f '{{.State.Running}}' "$DB_CONTAINER" 2>/dev/null || true)"
-[[ "$RUNNING" == "true" ]] || die "database container is not running: $DB_CONTAINER"
+DB_RUNNING="$(docker inspect -f '{{.State.Running}}' "$DB_CONTAINER" 2>/dev/null || true)"
+[[ "$DB_RUNNING" == "true" ]] || die "database container is not running: $DB_CONTAINER"
+
+API_RUNNING="$(docker inspect -f '{{.State.Running}}' "$API_CONTAINER" 2>/dev/null || true)"
+[[ "$API_RUNNING" == "true" ]] || die "API container is not running: $API_CONTAINER"
 
 LOCK_DIR="$BACKUP_ROOT/.restore-check.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
@@ -132,6 +136,11 @@ PROJECT_COUNT="$(docker exec "$DB_CONTAINER" sh -c 'psql -Atq -U "$POSTGRES_USER
 ENTITY_COUNT="$(docker exec "$DB_CONTAINER" sh -c 'psql -Atq -U "$POSTGRES_USER" -d "$1" -c "SELECT count(*) FROM knowledge_entities;"' sh "$TEMP_DB")"
 [[ "$PROJECT_COUNT" =~ ^[0-9]+$ ]] || die "restored projects table is not readable"
 [[ "$ENTITY_COUNT" =~ ^[0-9]+$ ]] || die "restored knowledge_entities table is not readable"
+
+log "restore-check: running integration_readiness.py --database against disposable database"
+docker exec -e RESTORE_CHECK_DB="$TEMP_DB" "$API_CONTAINER" \
+  python -c 'import os, subprocess, sys; from sqlalchemy.engine import make_url; env = os.environ.copy(); env["DATABASE_URL"] = make_url(env["DATABASE_URL"]).set(database=env["RESTORE_CHECK_DB"]).render_as_string(hide_password=False); raise SystemExit(subprocess.call([sys.executable, "scripts/integration_readiness.py", "--database"], env=env))'
+log "restore-check: integration readiness passed"
 
 log "restore-check: verified backup=$LATEST_NAME alembic_head=$RESTORED_HEAD projects=$PROJECT_COUNT knowledge_entities=$ENTITY_COUNT"
 log "restore-check: completed successfully"
