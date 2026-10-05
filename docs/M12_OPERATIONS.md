@@ -62,7 +62,7 @@ Não use o diretório de dados do PostgreSQL como destino de backup.
 
 ### Agendamento
 
-O horário do cron deve ser decidido no host antes da ativação. A linha final deverá chamar explicitamente `/bin/bash`, sem depender de `.venv` ativo ou de shell interativo.
+O horário do cron deve chamar explicitamente `/bin/bash`, sem depender de `.venv` ativo ou de shell interativo.
 
 Modelo:
 
@@ -70,17 +70,62 @@ Modelo:
 <MINUTO> <HORA> * * * cd /DATA/AppData/superchat/app && BACKUP_ROOT=/DATA/Backup/superchat/automatic DB_CONTAINER=app-db-1 KEEP_COUNT=14 /bin/bash scripts/ops_backup.sh >> /DATA/Backup/superchat/automatic/backup.log 2>&1
 ```
 
-Antes de instalar o cron:
+No host real, M12.1 foi validado manualmente e ativado para execução diária às 03:15, com retenção de 14 backups automáticos.
 
-1. executar a rotina manualmente;
-2. validar o `.dump` e seu `.sha256`;
-3. executar uma segunda vez para provar idempotência operacional e lock liberado;
-4. confirmar espaço livre;
-5. só então adicionar o agendamento.
+## M12.2 — restore periódico em banco descartável
+
+A rotina `scripts/ops_restore_check.sh` comprova que o backup automático mais recente é realmente restaurável sem tocar no banco principal.
+
+Fluxo:
+
+1. seleciona o `auto-superchat-*.dump` mais recente;
+2. valida o sidecar SHA-256;
+3. valida o formato com `pg_restore -l`;
+4. cria um banco temporário com prefixo `superchat_restore_check_`;
+5. restaura o dump com `pg_restore --exit-on-error`;
+6. compara o `alembic_version` restaurado com o banco principal;
+7. valida tabelas críticas, incluindo memória operacional e grafo semântico;
+8. executa leituras básicas em `projects` e `knowledge_entities`;
+9. remove o banco descartável no `trap EXIT`, inclusive quando a validação falha.
+
+O script nunca usa o banco `POSTGRES_DB` como alvo de restore, não recria o container e não reinicia o PostgreSQL.
+
+### Execução manual
+
+```bash
+cd /DATA/AppData/superchat/app
+
+BACKUP_ROOT=/DATA/Backup/superchat/automatic \
+DB_CONTAINER=app-db-1 \
+/bin/bash scripts/ops_restore_check.sh
+```
+
+O resultado esperado termina com:
+
+```text
+restore-check: completed successfully
+```
+
+Após a execução, confirme que não restou banco descartável:
+
+```bash
+docker exec app-db-1 sh -c 'psql -Atq -U "$POSTGRES_USER" -d postgres -c "SELECT datname FROM pg_database WHERE datname LIKE '\''superchat_restore_check_%'\'';"'
+```
+
+Nenhuma linha deve ser retornada.
+
+### Agendamento semanal
+
+O restore-check deve ser agendado somente depois da validação manual no ZimaOS. Como o backup diário roda às 03:15, o horário recomendado para o teste semanal é domingo às 04:00:
+
+```text
+0 4 * * 0 cd /DATA/AppData/superchat/app && BACKUP_ROOT=/DATA/Backup/superchat/automatic DB_CONTAINER=app-db-1 /bin/bash scripts/ops_restore_check.sh >> /DATA/Backup/superchat/automatic/restore-check.log 2>&1
+```
+
+Isso garante que o teste semanal use, em condições normais, um backup produzido menos de uma hora antes.
 
 ## Próximas etapas
 
-- M12.2 — restore periódico em banco descartável;
 - M12.3 — retenção/rotação de logs Docker;
 - M12.4 — fechar o checkpoint do host real rastreado na Issue #57;
 - M12.5 — atualizar documentação geral M10/M11/M12;
