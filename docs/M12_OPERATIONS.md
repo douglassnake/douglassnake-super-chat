@@ -116,7 +116,7 @@ Nenhuma linha deve ser retornada.
 
 ### Agendamento semanal
 
-O restore-check deve ser agendado somente depois da validação manual no ZimaOS. Como o backup diário roda às 03:15, o horário recomendado para o teste semanal é domingo às 04:00:
+Como o backup diário roda às 03:15, o restore-check foi ativado no host real para domingo às 04:00:
 
 ```text
 0 4 * * 0 cd /DATA/AppData/superchat/app && BACKUP_ROOT=/DATA/Backup/superchat/automatic DB_CONTAINER=app-db-1 /bin/bash scripts/ops_restore_check.sh >> /DATA/Backup/superchat/automatic/restore-check.log 2>&1
@@ -124,9 +124,60 @@ O restore-check deve ser agendado somente depois da validação manual no ZimaOS
 
 Isso garante que o teste semanal use, em condições normais, um backup produzido menos de uma hora antes.
 
+## M12.3 — rotação de logs Docker + espaço em disco
+
+O overlay `docker-compose.production.yml` já define logs limitados para `db` e `api` com driver `json-file`, `max-size=10m` e `max-file=5` por padrão. O M12.3 não altera esses limites: ele comprova que os containers reais foram criados com a configuração esperada e verifica espaço livre nos filesystems usados pelo aplicativo e pelos backups.
+
+A rotina `scripts/ops_storage_check.sh` é somente leitura. Ela:
+
+- confirma que `app-db-1` e `app-api-1` estão em execução;
+- lê a configuração efetiva de logging dos containers;
+- exige `json-file`, `10m` e `5` por padrão, ou os valores informados por ambiente;
+- informa o caminho e o tamanho do arquivo de log ativo quando o host permite leitura;
+- verifica espaço livre em `/DATA/AppData/superchat` e `/DATA/Backup/superchat`;
+- falha quando houver menos de 15% de espaço livre por padrão;
+- mostra `docker system df` apenas como diagnóstico;
+- nunca executa `restart`, `stop`, `rm`, `compose up/down` ou qualquer prune.
+
+### Execução manual
+
+Após merge e CI verde:
+
+```bash
+cd /DATA/AppData/superchat/app
+
+DB_CONTAINER=app-db-1 \
+API_CONTAINER=app-api-1 \
+SUPERCHAT_LOG_MAX_SIZE=10m \
+SUPERCHAT_LOG_MAX_FILES=5 \
+MIN_FREE_PERCENT=15 \
+APP_ROOT=/DATA/AppData/superchat \
+BACKUP_ROOT=/DATA/Backup/superchat \
+/bin/bash scripts/ops_storage_check.sh
+```
+
+O resultado esperado termina com:
+
+```text
+storage-check: completed successfully
+```
+
+Se houver diferença entre a configuração real de logging e o Compose, não recrie o PostgreSQL automaticamente. Primeiro registre a divergência, confirme backup recente e restore-check verde e planeje a recriação controlada do container. Se a configuração real já estiver correta, nenhum restart é necessário.
+
+### Valores de produção
+
+Os defaults versionados são:
+
+```text
+SUPERCHAT_LOG_MAX_SIZE=10m
+SUPERCHAT_LOG_MAX_FILES=5
+MIN_FREE_PERCENT=15
+```
+
+Com `max-size=10m` e `max-file=5`, cada container mantém no máximo aproximadamente cinco segmentos do log `json-file`, sujeitos ao comportamento do driver Docker. A checagem de espaço em disco continua necessária porque imagens, camadas, volumes e backups também consomem armazenamento.
+
 ## Próximas etapas
 
-- M12.3 — retenção/rotação de logs Docker;
 - M12.4 — fechar o checkpoint do host real rastreado na Issue #57;
 - M12.5 — atualizar documentação geral M10/M11/M12;
 - M12.6 — onboarding dos projetos reais.
