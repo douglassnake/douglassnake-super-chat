@@ -34,6 +34,14 @@ def main() -> int:
         action="store_true",
         help="fail unless backup and data directories are on distinct filesystems/devices",
     )
+    parser.add_argument(
+        "--data-managed-by-service",
+        action="store_true",
+        help=(
+            "validate the persistent data directory without requiring the current operator "
+            "to have write access; use when the database service/container owns that directory"
+        ),
+    )
     args = parser.parse_args()
 
     report = build_preflight_report(
@@ -45,6 +53,7 @@ def main() -> int:
         bind_port=args.bind_port,
         required_secrets=tuple(args.required_secrets or ("auth_password_hash",)),
         require_separate_backup_device=args.require_separate_backup_device,
+        data_managed_by_service=args.data_managed_by_service,
     )
     print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if report.ready else 1

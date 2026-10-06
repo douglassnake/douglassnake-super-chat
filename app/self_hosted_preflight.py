@@ -228,10 +228,23 @@ def build_preflight_report(
     bind_port: int = 8000,
     required_secrets: Sequence[str] = ("auth_password_hash",),
     require_separate_backup_device: bool = False,
+    data_managed_by_service: bool = False,
     docker_runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] = _run_command,
 ) -> PreflightReport:
+    data_check = check_directory(
+        "data_directory",
+        data_dir,
+        require_writable=not data_managed_by_service,
+    )
+    if data_managed_by_service and data_check.status == "pass":
+        data_check = CheckResult(
+            "data_directory",
+            "pass",
+            "directory policy satisfied; operator write check skipped for service-managed data",
+        )
+
     checks = [
-        check_directory("data_directory", data_dir, require_writable=True),
+        data_check,
         check_directory("backup_directory", backup_dir, require_writable=True),
         check_secret_store(secret_dir, required_secrets=required_secrets),
         check_free_space(data_dir, minimum_free_gib=minimum_free_gib),

@@ -139,7 +139,7 @@ ENTITY_COUNT="$(docker exec "$DB_CONTAINER" sh -c 'psql -Atq -U "$POSTGRES_USER"
 
 log "restore-check: running integration_readiness.py --database against disposable database"
 docker exec -e RESTORE_CHECK_DB="$TEMP_DB" "$API_CONTAINER" \
-  python -c 'import os, subprocess, sys; from sqlalchemy.engine import make_url; env = os.environ.copy(); env["DATABASE_URL"] = make_url(env["DATABASE_URL"]).set(database=env["RESTORE_CHECK_DB"]).render_as_string(hide_password=False); env["SECRET_BACKEND"] = "settings"; env.pop("SECRET_DIR", None); raise SystemExit(subprocess.call([sys.executable, "scripts/integration_readiness.py", "--database"], env=env))'
+  python -c 'import os, subprocess, sys; from sqlalchemy.engine import make_url; source = os.environ; env = {name: source[name] for name in ("PATH", "PYTHONPATH", "HOME", "LANG", "LC_ALL", "TZ") if source.get(name)}; env["DATABASE_URL"] = make_url(source["DATABASE_URL"]).set(database=source["RESTORE_CHECK_DB"]).render_as_string(hide_password=False); env["ENVIRONMENT"] = "development"; env["AUTH_ENABLED"] = "false"; env["AUTH_COOKIE_SECURE"] = "false"; env["SECRET_BACKEND"] = "settings"; raise SystemExit(subprocess.call([sys.executable, "scripts/integration_readiness.py", "--database"], env=env))'
 log "restore-check: integration readiness passed"
 
 log "restore-check: verified backup=$LATEST_NAME alembic_head=$RESTORED_HEAD projects=$PROJECT_COUNT knowledge_entities=$ENTITY_COUNT"

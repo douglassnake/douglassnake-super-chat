@@ -80,9 +80,15 @@ def test_disposable_restore_runs_integration_readiness_inside_api_container() ->
     assert 'RESTORE_CHECK_DB="$TEMP_DB"' in script
     assert 'scripts/integration_readiness.py", "--database"' in script
     assert 'restore-check: integration readiness passed' in script
-    assert 'make_url(env["DATABASE_URL"])' in script
+    assert 'source = os.environ' in script
+    assert 'make_url(source["DATABASE_URL"])' in script
+    assert 'env["ENVIRONMENT"] = "development"' in script
+    assert 'env["AUTH_ENABLED"] = "false"' in script
+    assert 'env["AUTH_COOKIE_SECURE"] = "false"' in script
     assert 'env["SECRET_BACKEND"] = "settings"' in script
-    assert 'env.pop("SECRET_DIR", None)' in script
+    assert "os.environ.copy()" not in script
+    assert "AUTH_PASSWORD_HASH" not in script
+    assert "SECRET_DIR" not in script
 
 
 def test_database_credentials_are_not_exposed_as_host_arguments_or_logs() -> None:

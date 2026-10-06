@@ -128,6 +128,50 @@ def test_non_writable_or_missing_directory_fails(tmp_path: Path) -> None:
     assert result.detail == "path does not exist"
 
 
+def test_service_managed_data_directory_can_skip_operator_write_check(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    secret_dir = _mkdir(tmp_path / "secrets", 0o750)
+    data_dir = _mkdir(tmp_path / "data")
+    backup_dir = _mkdir(tmp_path / "backup")
+    _write_secret(secret_dir, "auth_password_hash", "hash")
+
+    real_access = preflight.os.access
+
+    def fake_access(path, mode):
+        if Path(path) == data_dir:
+            return False
+        return real_access(path, mode)
+
+    monkeypatch.setattr(preflight.os, "access", fake_access)
+    monkeypatch.setattr(preflight.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    blocked = build_preflight_report(
+        secret_dir=secret_dir,
+        data_dir=data_dir,
+        backup_dir=backup_dir,
+        minimum_free_gib=0,
+        bind_port=0,
+        docker_runner=_docker_ok,
+    )
+    ready = build_preflight_report(
+        secret_dir=secret_dir,
+        data_dir=data_dir,
+        backup_dir=backup_dir,
+        minimum_free_gib=0,
+        bind_port=0,
+        data_managed_by_service=True,
+        docker_runner=_docker_ok,
+    )
+
+    assert not blocked.ready
+    assert ready.ready
+    data_check = next(item for item in ready.checks if item.name == "data_directory")
+    assert data_check.status == "pass"
+    assert "service-managed data" in data_check.detail
+
+
 def test_missing_docker_blocks_preflight(tmp_path: Path, monkeypatch) -> None:
     secret_dir = _mkdir(tmp_path / "secrets", 0o750)
     data_dir = _mkdir(tmp_path / "data")
