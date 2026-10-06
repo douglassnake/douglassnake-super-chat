@@ -45,7 +45,8 @@ Cada efeito externo tem autorização própria. Relações descobertas pelo graf
 - **M9.0–M9.3** — autenticação, observabilidade, secret files e readiness self-hosted;
 - **M10.2–M10.3.1** — CRUD operacional na Web e onboarding GitHub;
 - **M11.1–M11.6** — grafo do conhecimento, relações semânticas tipadas, documentos, descoberta com revisão humana e direção visual;
-- **M12.1–M12.4** — operação contínua no ZimaOS/NAS: backup, restore, logs/storage e checkpoint real do host.
+- **M12.1–M12.5** — operação contínua no ZimaOS/NAS, checkpoint real do host e documentação consolidada;
+- **M12.6** — onboarding controlado dos projetos reais no Segundo Cérebro.
 
 O checkpoint operacional real do ZimaOS/NAS foi concluído em **06/10/2026** no commit `dd9eab884deed3865e51ffa68ac3cc9ddb37986f`. A Issue #57 foi fechada com critério GO para operação interna.
 
@@ -194,8 +195,20 @@ O repositório é público. Nunca versione:
 
 As fontes externas continuam sendo fonte de verdade para seus próprios domínios; o PostgreSQL mantém estado operacional e relações necessárias à continuidade.
 
-## Próxima fronteira
+## Onboarding de projetos reais — M12.6
 
-O checkpoint M12.4 foi concluído. A próxima etapa funcional é **M12.6 — onboarding dos projetos reais no Segundo Cérebro**, usando o CRUD, o grafo e as fontes já implantadas.
+O M12.6 adiciona um importador idempotente para manifesto privado:
 
-Antes disso, este M12.5 consolida a documentação para refletir o estado real de M10, M11 e M12.
+```text
+scripts/onboard_projects.py
+```
+
+Ele suporta dry-run por padrão e só grava com `--apply`. O manifesto pode definir projeto, fonte, decisão, tarefa, memória e relação semântica inicial sem incluir secrets.
+
+Manifestos reais não devem entrar no Git. Um exemplo fictício está em:
+
+```text
+docs/M12_6_ONBOARDING_EXAMPLE.json
+```
+
+A próxima ação é aplicar o fluxo no host real, validar pelo menos três projetos, confirmar retomada de contexto e repetir o manifesto sem criar duplicatas.

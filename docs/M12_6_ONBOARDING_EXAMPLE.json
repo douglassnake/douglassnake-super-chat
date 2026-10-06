@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "slug": "alpha-ops",
+      "name": "Alpha Ops",
+      "description": "Projeto fictício para demonstrar o onboarding.",
+      "status": "active",
+      "priority": 80,
+      "next_action": "Revisar o próximo marco",
+      "sources": [
+        {
+          "source_type": "github",
+          "external_id": "example/alpha-ops",
+          "url": "https://github.com/example/alpha-ops",
+          "label": "Código principal"
+        }
+      ],
+      "decisions": [
+        {
+          "key": "scope-next",
+          "title": "Escopo do próximo marco",
+          "body": "Executar somente o próximo submódulo aprovado.",
+          "rationale": "Evitar antecipar etapas."
+        }
+      ],
+      "tasks": [
+        {
+          "key": "next-submodule",
+          "title": "Implementar próximo submódulo",
+          "status": "todo",
+          "priority": 80
+        }
+      ],
+      "context_items": [
+        {
+          "key": "status-current",
+          "kind": "status",
+          "title": "Estado atual",
+          "content": "Marco anterior concluído e próximo passo definido.",
+          "importance": 0.9,
+          "source_type": "manual"
+        }
+      ],
+      "relations": [
+        {
+          "entity_name": "GitHub",
+          "entity_kind": "platform",
+          "entity_key": "github",
+          "relation_type": "uses",
+          "rationale": "Repositório principal do projeto."
+        }
+      ]
+    }
+  ]
+}

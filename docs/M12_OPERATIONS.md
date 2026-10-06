@@ -268,11 +268,81 @@ Um `SECONDARY_ROOT` adicional em NAS remoto, USB ou outro destino independente c
 
 Checkpoint concluído em 06/10/2026. As evidências finais foram registradas na Issue #57, que foi fechada como completed no commit validado `dd9eab884deed3865e51ffa68ac3cc9ddb37986f`.
 
+## M12.6 — onboarding controlado de projetos reais
+
+O onboarding real usa `scripts/onboard_projects.py`, que lê um manifesto JSON privado e faz upsert idempotente de:
+
+- projetos;
+- fontes;
+- decisões;
+- tarefas;
+- memórias/context items;
+- entidades canônicas e relações projeto → entidade.
+
+O script não recebe token, senha ou secret no schema. Campos extras são recusados por validação `extra=forbid`. Manifestos reais devem permanecer fora do Git. Arquivos com sufixo `*.onboarding.private.json` também são ignorados pelo repositório como proteção adicional.
+
+Exemplo sanitizado:
+
+```text
+docs/M12_6_ONBOARDING_EXAMPLE.json
+```
+
+### Execução segura no host
+
+1. confirmar backup automático recente e restore-check verde;
+2. sincronizar o `main`;
+3. gravar o manifesto real em diretório privado fora do repositório;
+4. copiar temporariamente o script e o manifesto para o container da API;
+5. executar primeiro em dry-run;
+6. revisar somente contagens/slugs retornados;
+7. repetir com `--apply`;
+8. validar projeto/snapshot/grafo;
+9. remover os arquivos temporários do container.
+
+Modelo:
+
+```bash
+PRIVATE_DIR=/DATA/AppData/superchat/private
+MANIFEST="$PRIVATE_DIR/m12-6.onboarding.private.json"
+
+chmod 600 "$MANIFEST"
+
+docker cp scripts/onboard_projects.py app-api-1:/tmp/onboard_projects.py
+docker cp "$MANIFEST" app-api-1:/tmp/m12-6.onboarding.private.json
+
+docker exec -w /app app-api-1 \
+  python /tmp/onboard_projects.py \
+  --manifest /tmp/m12-6.onboarding.private.json
+
+docker exec -w /app app-api-1 \
+  python /tmp/onboard_projects.py \
+  --manifest /tmp/m12-6.onboarding.private.json \
+  --apply
+
+docker exec app-api-1 rm -f \
+  /tmp/onboard_projects.py \
+  /tmp/m12-6.onboarding.private.json
+```
+
+Sem `--apply`, todas as alterações são revertidas. O relatório não imprime corpos de decisões, tarefas ou memórias; mostra apenas slugs, IDs e contagens.
+
+### Critério de conclusão
+
+M12.6 só é concluído quando:
+
+- pelo menos três projetos reais estiverem presentes no banco;
+- cada projeto tiver próxima ação coerente;
+- projetos com GitHub conhecido tiverem fonte ativa;
+- o grafo tiver relações canônicas úteis sem duplicação óbvia;
+- `/continue` ou snapshot recuperar contexto suficiente para retomada;
+- a execução idempotente do manifesto não criar duplicatas;
+- nenhum dado real ou manifesto privado tiver sido versionado no Git.
+
 ## Estado dos marcos
 
 - M12.1 — concluído;
 - M12.2 — concluído;
 - M12.3 — concluído;
 - M12.4 — concluído; Issue #57 fechada;
-- M12.5 — consolidação documental de M10/M11/M12;
-- M12.6 — próximo marco funcional: onboarding dos projetos reais.
+- M12.5 — concluído;
+- M12.6 — em andamento: onboarding dos projetos reais.

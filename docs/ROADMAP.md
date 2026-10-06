@@ -142,7 +142,7 @@ Evidências:
 - Issue #57 fechada com GO para operação interna.
 
 ### M12.5 — documentação M10/M11/M12
-Status: **em andamento neste marco**.
+Status: **concluído**.
 
 Objetivo:
 - atualizar README;
@@ -152,9 +152,18 @@ Objetivo:
 - consolidar runbooks M12.
 
 ### M12.6 — onboarding dos projetos reais
-Status: **próximo marco funcional**.
+Status: **em andamento**.
 
-Objetivo: alimentar o Segundo Cérebro com os projetos reais, fontes, tarefas, decisões, documentos e relações que já existem no ambiente operacional.
+Entregas deste marco:
+- importador idempotente por manifesto privado;
+- dry-run como padrão e gravação somente com `--apply`;
+- upsert de projetos, fontes, decisões, tarefas, memórias e relações semânticas;
+- manifesto real mantido fora do Git;
+- validação no host com pelo menos três projetos reais;
+- recuperação de contexto suficiente para retomada;
+- segunda execução sem duplicação.
+
+A conclusão depende da evidência do banco real no ZimaOS/NAS.
 
 ## Regra de evolução
 
