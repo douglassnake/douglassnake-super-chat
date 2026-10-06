@@ -1,6 +1,6 @@
-# M9.3 — ZimaOS/NAS deployment readiness
+# ZimaOS/NAS — deployment readiness e operação validada
 
-Este documento define o **checkpoint operacional** para executar o Super Chat em um host ZimaOS/NAS. Ele não é evidência de que o host real já foi validado. O go-live só é liberado depois que os checks abaixo forem executados no equipamento alvo.
+Este documento descreve o checkpoint operacional do Super Chat no host ZimaOS/NAS. O checkpoint real foi concluído em **06/10/2026**, no commit `dd9eab884deed3865e51ffa68ac3cc9ddb37986f`, e a Issue #57 foi fechada como `completed` para operação interna.
 
 ## 1. Princípios
 
@@ -72,18 +72,23 @@ A composição de produção força `ENVIRONMENT=production`, `AUTH_ENABLED=true
 
 ## 5. Preflight read-only
 
-Antes de subir os containers:
+Antes do primeiro deploy, use uma porta fixa livre. Em instalação já ativa, use o virtualenv do projeto, `--bind-port 0` e `--data-managed-by-service` para não exigir escrita direta do operador no diretório pertencente ao PostgreSQL.
+
+No host real validado:
 
 ```bash
-python scripts/self_hosted_preflight.py \
-  --secret-dir /srv/superchat/secrets \
-  --data-dir /srv/superchat \
-  --backup-dir /mnt/backup-superchat \
+./.venv/bin/python scripts/self_hosted_preflight.py \
+  --secret-dir "$SECRET_DIR" \
+  --data-dir "$DATA_DIR" \
+  --backup-dir "$BACKUP_DIR" \
   --min-free-gib 5 \
   --bind-host 127.0.0.1 \
-  --bind-port 8000 \
+  --bind-port 0 \
+  --data-managed-by-service \
   --require-separate-backup-device
 ```
+
+Resultado final validado: `"status": "ready"`.
 
 O preflight não altera o host. Ele verifica:
 
@@ -192,27 +197,29 @@ A retenção deve ser confirmada no host; a configuração do Compose limita os 
 
 ## 12. Evidências do checkpoint real
 
-Registre, sem segredos:
-
 | Evidência | Resultado |
 | --- | --- |
-| commit de `main` testado | pendente |
-| Docker Engine/Compose | pendente |
-| preflight `ready` | pendente |
-| secrets/permissões | pendente |
-| destino secundário de backup | pendente |
-| backup + SHA-256 | pendente |
-| restore em banco descartável | pendente |
-| `integration_readiness --database` pós-restore | pendente |
-| HTTPS/certificado válido | pendente |
-| `/ops/status` autenticado | pendente |
-| rotação/retenção de logs | pendente |
+| commit de `main` testado | `dd9eab884deed3865e51ffa68ac3cc9ddb37986f` |
+| Docker Engine/Compose | pass |
+| preflight | ready |
+| secrets/permissões | pass |
+| rotação atômica de secret | pass |
+| dados → backup | `/dev/sdc8 → /dev/md0` RAID1 |
+| backup + SHA-256 | pass |
+| restore em banco descartável | pass |
+| `integration_readiness --database` pós-restore | pass |
+| HTTPS | `200` |
+| API direta | `127.0.0.1:8010` |
+| rotação de logs | `json-file`, `10m × 5` |
+| PostgreSQL sem restart | pass |
 
-O M9.3 de código **não transforma automaticamente esses itens em concluídos**.
+O checkpoint foi concluído no M12.4 e a Issue #57 foi encerrada.
 
 ## 13. Go / no-go
 
-**GO** somente quando todos os itens abaixo forem verdadeiros:
+**Estado atual: GO para operação interna self-hosted.**
+
+Os critérios usados foram:
 
 1. CI do commit implantado está verde.
 2. Preflight do host real retorna `ready`.
@@ -222,4 +229,4 @@ O M9.3 de código **não transforma automaticamente esses itens em concluídos**
 6. Secrets reais estão fora do repo e com permissões verificadas.
 7. Retenção de logs/backups está definida e há espaço livre suficiente.
 
-Qualquer falha acima mantém o estado **NO-GO** para exposição externa.
+Qualquer regressão nesses critérios volta a condição operacional para **NO-GO**. O GO atual não publica a aplicação na internet, não abre firewall/roteador e não autoriza deploy externo arbitrário.
