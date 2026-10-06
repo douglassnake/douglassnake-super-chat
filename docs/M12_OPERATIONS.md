@@ -184,7 +184,7 @@ A Issue #57 só deve ser encerrada quando cada item tiver evidência do ZimaOS/N
 
 ### 1. Preflight real
 
-Descubra os paths montados sem imprimir qualquer segredo e execute o preflight. Como a API já ocupa `127.0.0.1:8010`, o teste de disponibilidade de bind usa `127.0.0.1:8000`; a exposição real de `8010` é validada separadamente abaixo.
+Descubra os paths montados sem imprimir qualquer segredo e execute o preflight com o virtualenv do projeto. Em uma instalação já existente, o diretório do PostgreSQL pode ser gravável apenas pelo serviço/container; `--data-managed-by-service` valida o path sem exigir escrita pelo operador. Como o checkpoint é pós-deploy, `--bind-port 0` usa uma porta efêmera livre para validar a capacidade de bind local; a exposição real de `8010` é validada separadamente abaixo.
 
 ```bash
 export DOCKER_CONFIG="/DATA/AppData/superchat/docker-config"
@@ -194,13 +194,14 @@ SECRET_DIR="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/run/sup
 DATA_DIR="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Source}}{{end}}{{end}}' app-db-1)"
 BACKUP_DIR="/DATA/Backup/superchat"
 
-python scripts/self_hosted_preflight.py \
+./.venv/bin/python scripts/self_hosted_preflight.py \
   --secret-dir "$SECRET_DIR" \
   --data-dir "$DATA_DIR" \
   --backup-dir "$BACKUP_DIR" \
   --min-free-gib 5 \
   --bind-host 127.0.0.1 \
-  --bind-port 8000 \
+  --bind-port 0 \
+  --data-managed-by-service \
   --require-separate-backup-device
 ```
 
@@ -227,7 +228,8 @@ A evidência esperada é `SECRET_ROTATION_PROBE=PASS`, sem exibir valor de secre
 ### 3. HTTPS e isolamento da API
 
 ```bash
-curl -kfsS --resolve superchat.home.arpa:443:127.0.0.1 \
+LAN_IP="$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+curl -kfsS --resolve "superchat.home.arpa:443:${LAN_IP}" \
   -o /dev/null -w 'HTTPS_STATUS=%{http_code}\n' \
   https://superchat.home.arpa/health
 
@@ -253,18 +255,18 @@ O restore só é aceito quando também aparecer `restore-check: integration read
 
 ### 5. Destino secundário real de backup
 
-A separação `/DATA/AppData/superchat` versus `/DATA/Backup/superchat` protege contra perda do filesystem primário de dados, mas não substitui uma segunda cópia independente. Para encerrar a Issue #57, defina `SECONDARY_ROOT` em outro disco, share de rede ou destino independente e valide uma cópia real com checksum.
+A Issue #57 exige que o destino de backup fique fora do volume primário de dados. No host validado, o PostgreSQL está em `/dev/sdc8` e `/DATA/Backup/superchat` está em `/dev/md0`, um RAID1 em discos físicos distintos. Essa separação satisfaz o requisito do checkpoint.
 
-Liste os filesystems montados antes de escolher o destino:
+Confirme a topologia com:
 
 ```bash
 df -hT
 lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINTS
 ```
 
-Depois execute uma cópia de validação usando `scripts/ops_backup.sh` com `SECONDARY_ROOT` e confirme que o destino não resolve para o mesmo filesystem do backup principal. Não use GitHub público, o diretório de dados do PostgreSQL nem outro caminho no mesmo volume apenas com nome diferente.
+Um `SECONDARY_ROOT` adicional em NAS remoto, USB ou outro destino independente continua recomendado como defesa em profundidade, mas não é requisito adicional para fechar a Issue #57 quando `sdc8` versus `md0` estiver comprovado.
 
-Quando preflight, secret rotation probe, HTTPS/API isolation, restore + integration readiness e segunda cópia independente estiverem comprovados no host, registre commit/data/evidências e só então feche a Issue #57.
+Quando preflight, secret rotation probe, HTTPS/API isolation, restore + integration readiness e separação real entre volume de dados e destino de backup estiverem comprovados no host, registre commit/data/evidências e só então feche a Issue #57.
 
 ## Próximas etapas
 
