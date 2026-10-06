@@ -58,7 +58,7 @@ Os dados do PostgreSQL estão em `/dev/sdc8` e `/DATA/Backup/superchat` está em
 
 Isso satisfaz o item da Issue #57 que exige um destino secundário de backup fora do volume primário. Um `SECONDARY_ROOT` adicional em NAS remoto, USB ou outro destino independente continua recomendado como defesa em profundidade, mas não é requisito adicional do checkpoint #57.
 
-## Evidência parcial já confirmada em 2026-10-06
+## Evidência final confirmada em 2026-10-06
 
 - virtualenv do projeto presente;
 - secret store e separação de backup aprovados pelo preflight;
@@ -67,7 +67,10 @@ Isso satisfaz o item da Issue #57 que exige um destino secundário de backup for
 - HTTPS em `superchat.home.arpa` retornou 200 via IP LAN;
 - API publicada apenas em `127.0.0.1:8010`;
 - backup automático mais recente passou em SHA-256, formato e restore no banco descartável;
-- banco descartável foi removido mesmo após falha de readiness;
+- `integration_readiness.py --database` retornou `status=pass` no banco restaurado;
+- Alembic head restaurado: `0012_cross_knowledge_relations`;
+- `projects=2` e `knowledge_entities=5` foram lidos com sucesso;
+- banco descartável foi removido sem resíduos;
 - PostgreSQL principal permaneceu `healthy` e sem restart.
 
-O M12.4 só deve ser fechado após repetir o preflight com o modo de dados gerenciado pelo serviço e repetir o restore-check com o ambiente filho isolado, ambos com sucesso.
+Resultado: **M12.4 concluído**. A Issue #57 foi fechada como `completed` após a validação final no commit `dd9eab884deed3865e51ffa68ac3cc9ddb37986f`.
