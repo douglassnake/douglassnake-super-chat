@@ -188,6 +188,9 @@ def _upsert_source(
         )
         counters["sources_created"] += 1
         return True
+    merged_metadata = dict(existing.metadata_json or {})
+    merged_metadata.update(spec.metadata_json)
+    values["metadata_json"] = merged_metadata
     if _set_fields(existing, values):
         existing.updated_at = utcnow()
         counters["sources_updated"] += 1
@@ -349,11 +352,11 @@ def _upsert_relation(
             ProjectRelation.relation_type == spec.relation_type,
         )
     )
-    relation_values = {
-        "rationale": spec.rationale,
-        "source_ref": spec.source_ref,
-        "is_active": True,
-    }
+    relation_values = {"is_active": True}
+    if spec.rationale is not None:
+        relation_values["rationale"] = spec.rationale
+    if spec.source_ref is not None:
+        relation_values["source_ref"] = spec.source_ref
     if existing is None:
         db.add(
             ProjectRelation(
