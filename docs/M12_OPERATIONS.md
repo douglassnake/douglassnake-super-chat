@@ -266,10 +266,13 @@ lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINTS
 
 Um `SECONDARY_ROOT` adicional em NAS remoto, USB ou outro destino independente continua recomendado como defesa em profundidade, mas não é requisito adicional para fechar a Issue #57 quando `sdc8` versus `md0` estiver comprovado.
 
-Quando preflight, secret rotation probe, HTTPS/API isolation, restore + integration readiness e separação real entre volume de dados e destino de backup estiverem comprovados no host, registre commit/data/evidências e só então feche a Issue #57.
+Checkpoint concluído em 06/10/2026. As evidências finais foram registradas na Issue #57, que foi fechada como completed no commit validado `dd9eab884deed3865e51ffa68ac3cc9ddb37986f`.
 
-## Próximas etapas
+## Estado dos marcos
 
-- M12.4 — concluir e fechar o checkpoint do host real rastreado na Issue #57;
-- M12.5 — atualizar documentação geral M10/M11/M12;
-- M12.6 — onboarding dos projetos reais.
+- M12.1 — concluído;
+- M12.2 — concluído;
+- M12.3 — concluído;
+- M12.4 — concluído; Issue #57 fechada;
+- M12.5 — consolidação documental de M10/M11/M12;
+- M12.6 — próximo marco funcional: onboarding dos projetos reais.
