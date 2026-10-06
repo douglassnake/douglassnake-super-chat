@@ -31,8 +31,8 @@ def _manifest(next_action: str = "Revisar PR de planejamento") -> OnboardingMani
             "version": 1,
             "projects": [
                 {
-                    "slug": "meunegocio-ia",
-                    "name": "MeuNegócio IA",
+                    "slug": "alpha-ops",
+                    "name": "Alpha Ops",
                     "description": "SaaS para pequenos negócios.",
                     "status": "active",
                     "priority": 90,
@@ -40,23 +40,23 @@ def _manifest(next_action: str = "Revisar PR de planejamento") -> OnboardingMani
                     "sources": [
                         {
                             "source_type": "github",
-                            "external_id": "douglassnake/meunegocioia",
-                            "url": "https://github.com/douglassnake/meunegocioia",
+                            "external_id": "example/alpha-ops",
+                            "url": "https://github.com/example/alpha-ops",
                             "label": "Código principal",
                         }
                     ],
                     "decisions": [
                         {
                             "key": "m3-1-scope",
-                            "title": "M3.1 autorizado com limites",
-                            "body": "Implementar somente clientes e serviços.",
+                            "title": "Marco autorizado com limites",
+                            "body": "Implementar somente o próximo submódulo.",
                             "rationale": "Preservar separação entre marcos.",
                         }
                     ],
                     "tasks": [
                         {
                             "key": "m3-1",
-                            "title": "Implementar M3.1 — Clientes e serviços",
+                            "title": "Implementar próximo submódulo",
                             "priority": 90,
                         }
                     ],
@@ -65,7 +65,7 @@ def _manifest(next_action: str = "Revisar PR de planejamento") -> OnboardingMani
                             "key": "status-2026-10-06",
                             "kind": "status",
                             "title": "Estado atual",
-                            "content": "M2 concluído e M3 planejado.",
+                            "content": "Marco anterior concluído e próximo planejado.",
                             "importance": 0.95,
                             "source_type": "github",
                         }
@@ -112,7 +112,7 @@ def test_manifest_onboarding_is_idempotent_and_updates_stable_records() -> None:
             assert second["totals"]["context_items_created"] == 0
             assert second["totals"]["relations_created"] == 0
 
-            project = db.scalar(select(Project).where(Project.slug == "meunegocio-ia"))
+            project = db.scalar(select(Project).where(Project.slug == "alpha-ops"))
             assert project is not None
             assert project.next_action == "Iniciar M3.1"
 
@@ -127,9 +127,9 @@ def test_manifest_onboarding_is_idempotent_and_updates_stable_records() -> None:
             decision = db.scalar(select(Decision))
             task = db.scalar(select(Task))
             memory = db.scalar(select(ContextItem))
-            assert decision is not None and decision.source_ref == "m12.6:meunegocio-ia:decision:m3-1-scope"
-            assert task is not None and task.source_ref == "m12.6:meunegocio-ia:task:m3-1"
-            assert memory is not None and memory.source_ref == "m12.6:meunegocio-ia:context:status-2026-10-06"
+            assert decision is not None and decision.source_ref == "m12.6:alpha-ops:decision:m3-1-scope"
+            assert task is not None and task.source_ref == "m12.6:alpha-ops:task:m3-1"
+            assert memory is not None and memory.source_ref == "m12.6:alpha-ops:context:status-2026-10-06"
     finally:
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
