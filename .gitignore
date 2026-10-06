@@ -15,3 +15,6 @@ htmlcov/
 .DS_Store
 .vscode/
 .idea/
+
+# Private live onboarding manifests
+*.onboarding.private.json
