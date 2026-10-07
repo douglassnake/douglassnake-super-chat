@@ -211,4 +211,4 @@ Manifestos reais não devem entrar no Git. Um exemplo fictício está em:
 docs/M12_6_ONBOARDING_EXAMPLE.json
 ```
 
-A próxima ação é aplicar o fluxo no host real, validar pelo menos três projetos, confirmar retomada de contexto e repetir o manifesto sem criar duplicatas.
+O fluxo foi validado no host real em 07/10/2026 com três projetos reais, retomada de contexto, relações semânticas úteis e segunda aplicação idempotente sem criações ou atualizações.
