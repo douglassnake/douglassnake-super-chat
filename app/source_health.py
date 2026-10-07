@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from typing import Any
 
-from app.core.config import get_settings
 from app.models import ProjectSource
 
 
@@ -35,7 +35,7 @@ def source_freshness(
     metadata = dict(source.metadata_json or {})
     configured = stale_after_seconds
     if configured is None:
-        configured = int(get_settings().github_source_stale_after_seconds)
+        configured = int(os.environ.get("SUPERCHAT_GITHUB_STALE_AFTER_SECONDS", "7200"))
     configured = max(60, configured)
 
     last_synced_at = _parse_iso(metadata.get("last_synced_at"))
