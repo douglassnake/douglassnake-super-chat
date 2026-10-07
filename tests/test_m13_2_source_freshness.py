@@ -8,10 +8,9 @@ from sqlalchemy.pool import StaticPool
 
 from app.dashboard import project_overview
 from app.database import Base
-from app.github_sync import sync_project_github
+from app.github_sync import record_github_sync_failure, sync_project_github
 from app.models import Project, ProjectSource
 from app.source_health import source_freshness
-from scripts.ops_github_sync import record_sync_failure
 
 
 class EmptyGitHubReader:
@@ -105,11 +104,12 @@ def test_success_and_failure_metadata_feed_project_overview() -> None:
             assert source.metadata_json["last_sync_error"] is None
             assert source.metadata_json["last_sync_attempt_at"] == source.metadata_json["last_synced_at"]
 
-        record_sync_failure(
-            SessionFactory,
-            project_id,
-            {"type": "GitHubAPIError", "status_code": 403},
-        )
+        with SessionFactory() as db:
+            record_github_sync_failure(
+                db,
+                project_id,
+                {"type": "GitHubAPIError", "status_code": 403},
+            )
 
         with SessionFactory() as db:
             overview = project_overview(db, project_id)
