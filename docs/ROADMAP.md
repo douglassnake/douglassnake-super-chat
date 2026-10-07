@@ -152,7 +152,7 @@ Objetivo:
 - consolidar runbooks M12.
 
 ### M12.6 — onboarding dos projetos reais
-Status: **em andamento**.
+Status: **concluído em 07/10/2026**.
 
 Entregas deste marco:
 - importador idempotente por manifesto privado;
@@ -163,7 +163,7 @@ Entregas deste marco:
 - recuperação de contexto suficiente para retomada;
 - segunda execução sem duplicação.
 
-A conclusão depende da evidência do banco real no ZimaOS/NAS.
+Validação final no ZimaOS/NAS: três projetos reais ativos, retomada por snapshot, relações semânticas persistidas e segunda execução do mesmo manifesto sem duplicações. A Issue #76 foi encerrada como completed.
 
 ## Regra de evolução
 
