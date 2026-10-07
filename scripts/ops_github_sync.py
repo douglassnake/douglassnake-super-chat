@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.github_sync import GitHubAPIError, sync_project_github
+from app.github_sync import GitHubAPIError, record_github_sync_failure, sync_project_github
 from app.models import Project, ProjectSource
 
 
@@ -46,36 +46,6 @@ def _safe_error(exc: Exception) -> dict[str, object]:
             payload["status_code"] = exc.status_code
         return payload
     return {"type": type(exc).__name__}
-
-
-def record_sync_failure(
-    session_factory: Callable[[], Session],
-    project_id: UUID,
-    error: dict[str, object],
-) -> None:
-    attempted_at = _utc_iso()
-    with session_factory() as db:
-        sources = list(
-            db.scalars(
-                select(ProjectSource).where(
-                    ProjectSource.project_id == project_id,
-                    ProjectSource.source_type == "github",
-                    ProjectSource.is_active.is_(True),
-                )
-            ).all()
-        )
-        for source in sources:
-            metadata = dict(source.metadata_json or {})
-            metadata.update(
-                {
-                    "last_sync_attempt_at": attempted_at,
-                    "last_sync_status": "failure",
-                    "last_sync_error": error,
-                }
-            )
-            source.metadata_json = metadata
-            source.updated_at = datetime.now(timezone.utc)
-        db.commit()
 
 
 @contextmanager
@@ -198,7 +168,12 @@ def sync_active_github_projects(
         except Exception as exc:
             safe_error = _safe_error(exc)
             try:
-                record_sync_failure(session_factory, target.project_id, safe_error)
+                with session_factory() as failure_db:
+                    record_github_sync_failure(
+                        failure_db,
+                        target.project_id,
+                        safe_error,
+                    )
             except Exception:
                 pass
             report.update(
