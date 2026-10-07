@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Event, Project, ProjectSource, SessionDelta, Task
+from app.source_health import source_freshness, source_health_summary
 
 
 def ensure_aware(value: datetime | None) -> datetime | None:
@@ -176,6 +177,17 @@ def dashboard_payload(db: Session) -> dict:
             )
             or 0
         )
+        project_sources = list(
+            db.scalars(
+                select(ProjectSource).where(
+                    ProjectSource.project_id == project.id,
+                    ProjectSource.is_active.is_(True),
+                )
+            ).all()
+        )
+        source_health = source_health_summary(
+            [source_freshness(source) for source in project_sources]
+        )
         items.append(
             {
                 "id": project.id,
@@ -187,6 +199,7 @@ def dashboard_payload(db: Session) -> dict:
                 "last_activity_at": project.last_activity_at,
                 "updated_at": project.updated_at,
                 "active_sources": source_count,
+                "source_health": source_health,
                 "health": health,
             }
         )
@@ -270,6 +283,7 @@ def project_overview(db: Session, project_id: UUID) -> dict | None:
                 "url": source.url,
                 "is_active": source.is_active,
                 "metadata": source.metadata_json,
+                "freshness": source_freshness(source),
             }
             for source in sources
         ],
