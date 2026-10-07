@@ -48,6 +48,36 @@ def _safe_error(exc: Exception) -> dict[str, object]:
     return {"type": type(exc).__name__}
 
 
+def record_sync_failure(
+    session_factory: Callable[[], Session],
+    project_id: UUID,
+    error: dict[str, object],
+) -> None:
+    attempted_at = _utc_iso()
+    with session_factory() as db:
+        sources = list(
+            db.scalars(
+                select(ProjectSource).where(
+                    ProjectSource.project_id == project_id,
+                    ProjectSource.source_type == "github",
+                    ProjectSource.is_active.is_(True),
+                )
+            ).all()
+        )
+        for source in sources:
+            metadata = dict(source.metadata_json or {})
+            metadata.update(
+                {
+                    "last_sync_attempt_at": attempted_at,
+                    "last_sync_status": "failure",
+                    "last_sync_error": error,
+                }
+            )
+            source.metadata_json = metadata
+            source.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
+
 @contextmanager
 def exclusive_lock(path: str):
     lock_path = Path(path)
@@ -166,10 +196,15 @@ def sync_active_github_projects(
             total_sources += source_count
             successful += 1
         except Exception as exc:
+            safe_error = _safe_error(exc)
+            try:
+                record_sync_failure(session_factory, target.project_id, safe_error)
+            except Exception:
+                pass
             report.update(
                 {
                     "status": "failure",
-                    "error": _safe_error(exc),
+                    "error": safe_error,
                 }
             )
             total_sources += target.source_count
