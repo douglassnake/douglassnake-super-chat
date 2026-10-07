@@ -328,15 +328,15 @@ Sem `--apply`, todas as alterações são revertidas. O relatório não imprime 
 
 ### Critério de conclusão
 
-M12.6 só é concluído quando:
+M12.6 foi concluído em 07/10/2026 após validar no host real que:
 
-- pelo menos três projetos reais estiverem presentes no banco;
-- cada projeto tiver próxima ação coerente;
-- projetos com GitHub conhecido tiverem fonte ativa;
-- o grafo tiver relações canônicas úteis sem duplicação óbvia;
-- `/continue` ou snapshot recuperar contexto suficiente para retomada;
-- a execução idempotente do manifesto não criar duplicatas;
-- nenhum dado real ou manifesto privado tiver sido versionado no Git.
+- pelo menos três projetos reais estavam presentes no banco;
+- cada projeto tinha próxima ação coerente;
+- projetos com GitHub conhecido tinham fonte ativa;
+- o grafo apresentava relações canônicas úteis sem duplicação óbvia;
+- snapshot recuperava contexto suficiente para retomada;
+- a segunda execução do mesmo manifesto retornou zero criações e zero atualizações;
+- o manifesto real permaneceu fora do Git.
 
 ## Estado dos marcos
 
@@ -345,4 +345,4 @@ M12.6 só é concluído quando:
 - M12.3 — concluído;
 - M12.4 — concluído; Issue #57 fechada;
 - M12.5 — concluído;
-- M12.6 — em andamento: onboarding dos projetos reais.
+- M12.6 — concluído em 07/10/2026: três projetos reais validados, contexto recuperável e importação idempotente.
