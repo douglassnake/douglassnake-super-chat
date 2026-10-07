@@ -46,7 +46,8 @@ Cada efeito externo tem autorização própria. Relações descobertas pelo graf
 - **M10.2–M10.3.1** — CRUD operacional na Web e onboarding GitHub;
 - **M11.1–M11.6** — grafo do conhecimento, relações semânticas tipadas, documentos, descoberta com revisão humana e direção visual;
 - **M12.1–M12.5** — operação contínua no ZimaOS/NAS, checkpoint real do host e documentação consolidada;
-- **M12.6** — onboarding controlado dos projetos reais no Segundo Cérebro.
+- **M12.6** — onboarding controlado dos projetos reais no Segundo Cérebro;
+- **M13** — atualização contínua das fontes, frescor do contexto, digest revisável e benchmark real de recuperação.
 
 O checkpoint operacional real do ZimaOS/NAS foi concluído em **06/10/2026** no commit `dd9eab884deed3865e51ffa68ac3cc9ddb37986f`. A Issue #57 foi fechada com critério GO para operação interna.
 
@@ -212,3 +213,12 @@ docs/M12_6_ONBOARDING_EXAMPLE.json
 ```
 
 O fluxo foi validado no host real em 07/10/2026 com três projetos reais, retomada de contexto, relações semânticas úteis e segunda aplicação idempotente sem criações ou atualizações.
+
+
+## Próximo marco — M13
+
+Com o M12 concluído e três projetos reais já cadastrados, o próximo passo é manter esse contexto atualizado automaticamente sem abrir mão da revisão humana.
+
+O M13 será executado em cinco etapas: sincronização GitHub read-only agendada, estado de frescor, digest revisável, benchmark com projetos reais e validação operacional no ZimaOS/NAS.
+
+Plano: `docs/M13_CONTINUOUS_CONTEXT.md`.
