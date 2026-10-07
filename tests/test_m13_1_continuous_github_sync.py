@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -157,3 +158,9 @@ def test_successful_repeat_can_report_zero_new_events() -> None:
     finally:
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
+
+
+def test_host_wrapper_sets_pythonpath_for_script_imports() -> None:
+    wrapper = Path("scripts/ops_github_sync.sh").read_text(encoding="utf-8")
+    assert "-e PYTHONPATH=/app" in wrapper
+    assert "python scripts/ops_github_sync.py" in wrapper
