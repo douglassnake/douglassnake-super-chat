@@ -148,3 +148,9 @@ a { color: inherit; }
   .detail-columns, .context-controls { grid-template-columns: 1fr; }
   .health-ring { width: 58px; height: 58px; }
 }
+
+.source-freshness { display: inline-flex; margin-top: 5px !important; width: fit-content; padding: 3px 7px; border-radius: 999px; border: 1px solid var(--line); }
+.source-fresh { color: var(--accent) !important; border-color: rgba(100,217,180,.32); background: rgba(100,217,180,.07); }
+.source-stale, .source-never { color: var(--warning) !important; border-color: rgba(242,201,109,.32); background: rgba(242,201,109,.07); }
+.source-failed { color: var(--danger) !important; border-color: rgba(255,111,125,.32); background: rgba(255,111,125,.07); }
+.source-inactive, .source-unknown { color: var(--muted) !important; }

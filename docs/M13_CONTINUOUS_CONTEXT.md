@@ -105,11 +105,18 @@ Distinguir claramente:
 ### Regras
 
 - `last_synced_at` permanece a referência primária para sucesso;
-- falhas precisam de estado próprio e timestamp, sem sobrescrever a última sincronização bem-sucedida;
-- limiar de stale configurável, inicialmente 2 horas para GitHub;
-- dashboard/overview deve exibir estado por projeto sem revelar segredos.
+- falhas têm `last_sync_attempt_at`, `last_sync_status` e erro saneado, sem sobrescrever a última sincronização bem-sucedida;
+- limiar de stale configurável por `SUPERCHAT_GITHUB_STALE_AFTER_SECONDS`, com padrão de 2 horas;
+- estados expostos: `fresh`, `stale`, `failed`, `never`, `inactive` e `unknown`;
+- dashboard/overview expõe frescor por fonte sem credenciais nem mensagem bruta de exceção;
+- o estado permanece em metadata da própria fonte; M13.2 não exige migration.
 
-Pode exigir migration aditiva se o estado de falha não puder ser representado de forma segura apenas em metadata.
+### Implementação M13.2
+
+- `app/source_health.py` deriva o estado de frescor;
+- sincronizações bem-sucedidas registram tentativa/sucesso e limpam erro anterior;
+- falhas agendadas e manuais registram apenas tipo/status HTTP saneados;
+- a interface mostra um badge de frescor e a data da última sincronização.
 
 ## M13.3 — digest e revisão humana
 

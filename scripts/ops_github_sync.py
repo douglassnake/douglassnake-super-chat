@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.github_sync import GitHubAPIError, sync_project_github
+from app.github_sync import GitHubAPIError, record_github_sync_failure, sync_project_github
 from app.models import Project, ProjectSource
 
 
@@ -166,10 +166,20 @@ def sync_active_github_projects(
             total_sources += source_count
             successful += 1
         except Exception as exc:
+            safe_error = _safe_error(exc)
+            try:
+                with session_factory() as failure_db:
+                    record_github_sync_failure(
+                        failure_db,
+                        target.project_id,
+                        safe_error,
+                    )
+            except Exception:
+                pass
             report.update(
                 {
                     "status": "failure",
-                    "error": _safe_error(exc),
+                    "error": safe_error,
                 }
             )
             total_sources += target.source_count

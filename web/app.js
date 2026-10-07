@@ -48,6 +48,20 @@ function healthClass(level) {
   return `health-${level || "healthy"}`;
 }
 
+function sourceFreshnessLabel(freshness) {
+  const status = freshness?.status || "unknown";
+  const labels = {
+    fresh: "Atualizada",
+    stale: "Atrasada",
+    failed: "Falhou",
+    never: "Nunca sincronizada",
+    inactive: "Inativa",
+    unknown: "Desconhecida",
+  };
+  return labels[status] || status;
+}
+
+
 function slugify(value) {
   return String(value || "")
     .normalize("NFD")
@@ -203,7 +217,10 @@ function renderOverview(data, tasks, decisions, memories) {
   $("#source-list").innerHTML = data.sources.length ? data.sources.map((source) => {
     const url = safeUrl(source.url);
     const title = url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(source.label)}</a>` : escapeHtml(source.label);
-    return `<div class="item-card"><strong>${title}</strong><span>${escapeHtml(source.source_type)} · ${escapeHtml(source.external_id || "sem ID externo")}</span></div>`;
+    const freshness = source.freshness || {};
+    const freshnessClass = `source-freshness source-${escapeHtml(freshness.status || "unknown")}`;
+    const freshnessDetail = freshness.last_synced_at ? ` · última sincronização ${escapeHtml(shortDate(freshness.last_synced_at))}` : "";
+    return `<div class="item-card"><strong>${title}</strong><span>${escapeHtml(source.source_type)} · ${escapeHtml(source.external_id || "sem ID externo")}</span><span class="${freshnessClass}">${escapeHtml(sourceFreshnessLabel(freshness))}${freshnessDetail}</span></div>`;
   }).join("") : '<div class="item-card"><span>Nenhuma fonte vinculada.</span></div>';
 
   const activeDecisions = decisions.filter((decision) => decision.status === "active");
