@@ -165,6 +165,20 @@ Entregas deste marco:
 
 Validação final no ZimaOS/NAS: três projetos reais ativos, retomada por snapshot, relações semânticas persistidas e segunda execução do mesmo manifesto sem duplicações. A Issue #76 foi encerrada como completed.
 
+## M13 — atualização contínua e qualidade do Segundo Cérebro
+Issue principal: #86.
+
+Status: **planejamento iniciado em 07/10/2026**.
+
+Entregas propostas:
+- M13.1 — sincronização periódica read-only das fontes GitHub;
+- M13.2 — frescor e saúde das fontes;
+- M13.3 — digest de mudanças com revisão humana;
+- M13.4 — benchmark de recuperação com projetos reais e decisão objetiva sobre M7.1;
+- M13.5 — validação operacional e fechamento.
+
+Plano detalhado: `docs/M13_CONTINUOUS_CONTEXT.md`.
+
 ## Regra de evolução
 
 Cada efeito externo deve ter autorização própria, input resolvido pelo servidor, prova de estado anterior, verificação pós-efeito, segredo fora do estado persistido e reconciliação explícita quando rollback total não for possível.
