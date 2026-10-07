@@ -59,11 +59,37 @@ Por projeto:
 
 A saída nunca deve incluir token, cabeçalho Authorization, corpo completo de eventos ou conteúdo privado desnecessário.
 
+### Implementação M13.1
+
+A rotina é composta por:
+
+- `scripts/ops_github_sync.py` — seleciona projetos/fontes elegíveis, executa a sincronização e emite relatório JSON saneado;
+- `scripts/ops_github_sync.sh` — wrapper do host que executa o runner dentro do container da API, onde o secret backend e a conexão com o banco já estão disponíveis.
+
+O modo de diagnóstico não chama GitHub e não grava no banco:
+
+```bash
+cd /DATA/AppData/superchat/app
+API_CONTAINER=app-api-1 /bin/bash scripts/ops_github_sync.sh --check
+```
+
+A execução real faz somente leitura externa no GitHub e grava internamente eventos idempotentes e metadata da fonte:
+
+```bash
+API_CONTAINER=app-api-1 /bin/bash scripts/ops_github_sync.sh
+```
+
+O runner usa lock advisory dentro do container para impedir sobreposição. Falhas são isoladas por projeto: os demais projetos continuam sendo processados. O relatório não serializa mensagem bruta de exceção, token, header Authorization nem conteúdo de evento.
+
+Como o runner passa a fazer parte da imagem da API, a primeira implantação do M13.1 exige rebuild/recriação somente do serviço `api`; o PostgreSQL não deve ser recriado ou reiniciado.
+
 ### Agendamento
 
 Primeira cadência proposta: a cada 30 minutos.
 
-O cron só será instalado no ZimaOS depois da primeira execução manual aprovada. Se o volume de eventos ou rate limit justificar outra frequência, a cadência deve ser alterada com evidência.
+O cron só será instalado no ZimaOS depois da primeira execução manual aprovada e de uma segunda execução que confirme idempotência. A forma final de persistência/rotação do log será validada antes de ativar o cron; não deve ser introduzido um arquivo de log ilimitado.
+
+Se o volume de eventos ou rate limit justificar outra frequência, a cadência deve ser alterada com evidência.
 
 ## M13.2 — frescor e saúde das fontes
 
