@@ -151,6 +151,35 @@ def add_event_if_new(
     return True
 
 
+def record_github_sync_failure(
+    db: Session,
+    project_id: UUID,
+    error: dict[str, object],
+) -> None:
+    attempted_at = datetime.now(timezone.utc)
+    sources = list(
+        db.scalars(
+            select(ProjectSource).where(
+                ProjectSource.project_id == project_id,
+                ProjectSource.source_type == "github",
+                ProjectSource.is_active.is_(True),
+            )
+        ).all()
+    )
+    for source in sources:
+        metadata = dict(source.metadata_json or {})
+        metadata.update(
+            {
+                "last_sync_attempt_at": attempted_at.isoformat(),
+                "last_sync_status": "failure",
+                "last_sync_error": error,
+            }
+        )
+        source.metadata_json = metadata
+        source.updated_at = attempted_at
+    db.commit()
+
+
 def sync_project_github(
     db: Session,
     project: Project,
