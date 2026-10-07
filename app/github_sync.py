@@ -281,6 +281,9 @@ def sync_project_github(
                 "default_branch": repo_data.get("default_branch"),
                 "private": bool(repo_data.get("private")),
                 "last_synced_at": now.isoformat(),
+                "last_sync_attempt_at": now.isoformat(),
+                "last_sync_status": "success",
+                "last_sync_error": None,
                 "last_sync": {
                     "commits": len(commits),
                     "pulls": len(pulls),
