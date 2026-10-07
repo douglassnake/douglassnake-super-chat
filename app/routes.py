@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.github_sync import GitHubAPIError, sync_project_github
+from app.github_sync import GitHubAPIError, record_github_sync_failure, sync_project_github
 from app.google_context import build_context_with_google
 from app.google_sync import GoogleAPIError, GoogleAuthUnavailable, sync_project_google
 from app.models import ContextItem, Decision, Project, ProjectSource, SessionSummary, Task, utcnow
@@ -380,7 +380,11 @@ def sync_github(project_id: UUID, db: Session = Depends(get_db)) -> dict:
     try:
         return sync_project_github(db, project)
     except GitHubAPIError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        error = {"type": "GitHubAPIError"}
+        if exc.status_code is not None:
+            error["status_code"] = exc.status_code
+        record_github_sync_failure(db, project.id, error)
+        raise HTTPException(status_code=502, detail="GitHub synchronization failed") from exc
 
 
 @router.post("/projects/{project_id}/google/sync")
