@@ -26,9 +26,13 @@ Executar:
 
 Enquanto o host mantiver a saúde constatada no M14.2, espera-se JSON com status=healthy e action=would_none. Não ativar cron nesta etapa. Não inventar falhas na base, nem editar backups ou logs para simular incidentes; fixtures isoladas em CI validam esse comportamento.
 
-## Agendamento futuro (não ativado neste PR)
+## Agendamento no ZimaOS (ativado manualmente em 08/10/2026)
 
-Após revisão de segurança e prova manual real, avaliar cadência independente entre 30 e 60 minutos, com deduplicação de eventos. Não adicionar novo cron ainda. Não criar alerta externo, webhook, e-mail ou WhatsApp sem aprovação separada. Antes do cron, conferir local privado, logger funcional, ausência de duplicação no crontab e processo para alguém consultar os eventos.
+Após validação em produção de `logger`/journal, `dry-run`, execução normal, estado privado 0700/0600 e confirmação de ausência de entrada duplicada, o operador instalou uma quarta linha no crontab, sem alterar as três anteriores:
+
+    45 * * * * cd /DATA/AppData/superchat/app && umask 077 && ./.venv/bin/python scripts/ops_health_alert.py --restore-first-due 2026-10-11T04:00:00-03:00 > /DATA/AppData/superchat/private/m14-3/health-last-run.log 2>&1; rc=$?; if [ "$rc" -gt 2 ]; then /usr/bin/logger -t superchat-ops-health -p user.err "health-cron: internal-error"; fi
+
+A alteração foi precedida por backup privado do crontab e confirmação, após instalação, de **exatamente 1 entrada** para backup, restore-check, GitHub sync e health-alert. **A primeira execução automática ainda não foi comprovada**; isso deve ser verificado no `health-last-run.log` após o próximo minuto 45. Falhas internas (exit > 2) disparam mensagem local; estados failed/degraded são emitidos no journal pelo wrapper. Nenhum webhook, e-mail, WhatsApp ou alerta externo foi configurado.
 
 ## Limitações
 
