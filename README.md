@@ -32,6 +32,8 @@ Operação self-hosted
   ├── Caddy/HTTPS
   ├── backup automático
   ├── restore periódico em banco descartável
+  ├── sincronização GitHub read-only a cada 30 minutos
+  ├── frescor das fontes + digest revisável
   └── rotação de logs + monitoramento de storage
 ```
 
@@ -47,7 +49,7 @@ Cada efeito externo tem autorização própria. Relações descobertas pelo graf
 - **M11.1–M11.6** — grafo do conhecimento, relações semânticas tipadas, documentos, descoberta com revisão humana e direção visual;
 - **M12.1–M12.5** — operação contínua no ZimaOS/NAS, checkpoint real do host e documentação consolidada;
 - **M12.6** — onboarding controlado dos projetos reais no Segundo Cérebro;
-- **M13** — atualização contínua das fontes, frescor do contexto, digest revisável e benchmark real de recuperação.
+- **M13.1–M13.5** — atualização contínua das fontes, frescor do contexto, digest revisável, benchmark real de recuperação e fechamento operacional no ZimaOS/NAS.
 
 O checkpoint operacional real do ZimaOS/NAS foi concluído em **06/10/2026** no commit `dd9eab884deed3865e51ffa68ac3cc9ddb37986f`. A Issue #57 foi fechada com critério GO para operação interna.
 
@@ -215,10 +217,12 @@ docs/M12_6_ONBOARDING_EXAMPLE.json
 O fluxo foi validado no host real em 07/10/2026 com três projetos reais, retomada de contexto, relações semânticas úteis e segunda aplicação idempotente sem criações ou atualizações.
 
 
-## Próximo marco — M13
+## Atualização contínua e qualidade — M13
 
-Com o M12 concluído e três projetos reais já cadastrados, o próximo passo é manter esse contexto atualizado automaticamente sem abrir mão da revisão humana.
+O M13 foi concluído no ZimaOS/NAS em 08/10/2026.
 
-O M13 será executado em cinco etapas: sincronização GitHub read-only agendada, estado de frescor, digest revisável, benchmark com projetos reais e validação operacional no ZimaOS/NAS.
+A operação agora inclui sincronização GitHub read-only a cada 30 minutos, isolamento de falhas por projeto, estado de frescor por fonte e digest de mudanças com revisão humana obrigatória.
 
-Plano: `docs/M13_CONTINUOUS_CONTEXT.md`.
+O benchmark real dos três projetos ativos atingiu recall crítico de 1,0 em todos os casos e média de recall@k de 1,0. Por isso, M7.1 (embeddings/pgvector) permanece adiado: não há evidência atual de ganho que justifique a complexidade adicional.
+
+Plano e evidências: `docs/M13_CONTINUOUS_CONTEXT.md` e `docs/M13_4_REAL_CONTEXT_BENCHMARK.md`.
