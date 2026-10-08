@@ -47,7 +47,11 @@ def check_backup(root: Path, now: datetime, max_age_hours: float) -> dict:
 
     timestamp, selected = max(candidates, key=lambda item: item[0])
     result = {"name": selected.name}
-    if selected.is_symlink() or not selected.is_file() or selected.stat().st_size == 0:
+    try:
+        valid_file = not selected.is_symlink() and selected.is_file() and selected.stat().st_size > 0
+    except OSError:
+        valid_file = False
+    if not valid_file:
         return {**result, "state": "invalid", "reason": "not_regular_nonempty_dump"}
 
     sidecar = Path(str(selected) + ".sha256")
@@ -68,7 +72,10 @@ def check_backup(root: Path, now: datetime, max_age_hours: float) -> dict:
     except (OSError, UnicodeError):
         return {**result, "state": "invalid", "reason": "backup_unreadable"}
 
-    dump_time = datetime.strptime(timestamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    try:
+        dump_time = datetime.strptime(timestamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return {**result, "state": "invalid", "reason": "invalid_filename_timestamp"}
     if dump_time - now > MAX_CLOCK_SKEW:
         return {**result, "state": "invalid", "reason": "future_dated_backup"}
 
