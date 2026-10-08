@@ -22,6 +22,8 @@ from app.models import Project, ProjectSource
 
 
 DEFAULT_LOCK_FILE = "/tmp/superchat-github-sync.lock"
+# Project lifecycle status is distinct from the source-level sync opt-in.
+ELIGIBLE_PROJECT_STATUSES = ("active", "implementation", "planning")
 
 
 @dataclass(frozen=True)
@@ -79,7 +81,7 @@ def discover_targets(
             )
             .join(ProjectSource, ProjectSource.project_id == Project.id)
             .where(
-                Project.status == "active",
+                Project.status.in_(ELIGIBLE_PROJECT_STATUSES),
                 ProjectSource.source_type == "github",
                 ProjectSource.is_active.is_(True),
             )
