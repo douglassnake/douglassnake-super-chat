@@ -179,7 +179,7 @@ def test_real_cli_dry_run_uses_health_probe_without_missing_now(tmp_path: Path):
     dump.write_bytes(b"synthetic integration fixture - never production")
     checksum = hashlib.sha256(dump.read_bytes()).hexdigest()
     (backup_dir / (name + ".sha256")).write_text(
-        f"{checksum}  {name}\\n", encoding="ascii",
+        f"{checksum}  {name}\n", encoding="ascii",
     )
     state_file = tmp_path / "private" / "health-state.json"
     result = subprocess.run(
