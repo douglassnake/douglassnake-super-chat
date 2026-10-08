@@ -13,9 +13,9 @@ Status: **concluído e integrado**.
 Baseline sintético: 13.926 tokens candidatos → 1.794 selecionados, compressão 0,871176 e recall@2 de 1,0 no fixture.
 
 ### M7.1 — busca híbrida/semântica
-Status: **condicional — não iniciado**.
+Status: **adiado por evidência — 08/10/2026**.
 
-Embeddings/pgvector entram somente se benchmark com dados reais demonstrar ganho mensurável.
+O benchmark real do M13.4 atingiu média de recall@k de 1,0 e recall crítico de 1,0 nos três projetos ativos. Embeddings/pgvector permanecem fora do escopo até um benchmark futuro demonstrar falha relevante do mecanismo lexical ou ganho mensurável de uma alternativa semântica.
 
 ## M8 — Automação e agentes
 Status: **M8.0–M8.15 concluídos e integrados em `main`**.
@@ -168,16 +168,24 @@ Validação final no ZimaOS/NAS: três projetos reais ativos, retomada por snaps
 ## M13 — atualização contínua e qualidade do Segundo Cérebro
 Issue principal: #86.
 
-Status: **planejamento iniciado em 07/10/2026**.
+Status: **M13.1–M13.5 concluídos em 08/10/2026**.
 
-Entregas propostas:
-- M13.1 — sincronização periódica read-only das fontes GitHub;
-- M13.2 — frescor e saúde das fontes;
-- M13.3 — digest de mudanças com revisão humana;
-- M13.4 — benchmark de recuperação com projetos reais e decisão objetiva sobre M7.1;
-- M13.5 — validação operacional e fechamento.
+Entregas concluídas:
+- M13.1 — sincronização periódica GitHub read-only, isolada por projeto, agendada a cada 30 minutos;
+- M13.2 — frescor e saúde das fontes com estados visíveis no painel;
+- M13.3 — digest de mudanças com revisão humana via SessionDelta;
+- M13.4 — benchmark real dos três projetos, recall médio 1,0 e decisão `defer_m7_1`;
+- M13.5 — validação operacional no ZimaOS/NAS e documentação final.
 
-Plano detalhado: `docs/M13_CONTINUOUS_CONTEXT.md`.
+Evidências principais:
+- cron real observado no host;
+- idempotência de eventos e digest;
+- falha de uma fonte sem bloquear outra;
+- PostgreSQL principal sem restart causado pelas rotinas;
+- benchmark read-only com `ContextRun` inalterado;
+- nenhum efeito externo de escrita autorizado pelo M13.
+
+Plano e fechamento: `docs/M13_CONTINUOUS_CONTEXT.md`.
 
 ## Regra de evolução
 
