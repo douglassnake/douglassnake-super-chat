@@ -15,7 +15,10 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import ops_health_check as health
+try:
+    from scripts import ops_health_check as health
+except ModuleNotFoundError:
+    import ops_health_check as health  # Direct invocation from scripts/ on ZimaOS
 
 DEFAULT_STATE_FILE = Path("/DATA/AppData/superchat/private/m14-3/health-state.json")
 LOGGER_TAG = "superchat-ops-health"
