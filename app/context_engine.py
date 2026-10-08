@@ -436,6 +436,8 @@ def build_context_package(
     project: Project,
     query: str,
     profile: str = "standard",
+    *,
+    audit: bool = True,
 ) -> dict:
     started = perf_counter()
     if profile not in PROFILE_CONFIG:
@@ -526,18 +528,19 @@ def build_context_package(
         sources.append({"source_type": item.source_type, "source_ref": item.source_ref})
 
     duration_ms = int((perf_counter() - started) * 1000)
-    audit = ContextRun(
-        project_id=project.id,
-        profile=profile,
-        query_text=query,
-        candidate_count=len(unique),
-        selected_count=len(selected),
-        estimated_candidate_tokens=candidate_tokens,
-        estimated_selected_tokens=selected_tokens,
-        duration_ms=duration_ms,
-    )
-    db.add(audit)
-    db.commit()
+    if audit:
+        audit_run = ContextRun(
+            project_id=project.id,
+            profile=profile,
+            query_text=query,
+            candidate_count=len(unique),
+            selected_count=len(selected),
+            estimated_candidate_tokens=candidate_tokens,
+            estimated_selected_tokens=selected_tokens,
+            duration_ms=duration_ms,
+        )
+        db.add(audit_run)
+        db.commit()
 
     return {
         "project": {

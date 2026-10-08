@@ -1,0 +1,27 @@
+{
+  "name": "real-context-example",
+  "thresholds": {
+    "min_mean_recall": 0.9,
+    "critical_requires_full_recall": true
+  },
+  "cases": [
+    {
+      "name": "example operational retrieval",
+      "project_slug": "replace-with-real-project",
+      "query": "qual é a próxima ação e quais decisões operacionais importam?",
+      "profile": "standard",
+      "k": 5,
+      "critical": true,
+      "expected": [
+        {
+          "kind": "task",
+          "title_contains": "replace-with-expected-task-fragment"
+        },
+        {
+          "kind": "decision",
+          "title_contains": "replace-with-expected-decision-fragment"
+        }
+      ]
+    }
+  ]
+}
