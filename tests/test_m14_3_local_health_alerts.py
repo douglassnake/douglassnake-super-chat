@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import subprocess
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -162,6 +166,46 @@ def test_main_exit_codes_differentiate_healthy_failed_and_degraded(tmp_path: Pat
         )
         assert alert.main() == current[1]
         assert json.loads(capsys.readouterr().out)["status"] == current[0]
+
+
+
+def test_real_cli_dry_run_uses_health_probe_without_missing_now(tmp_path: Path):
+    """Regression: actual CLI -> M14.2 evaluate() without mocks or logger."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    name = f"auto-superchat-{stamp}.dump"
+    dump = backup_dir / name
+    dump.write_bytes(b"synthetic integration fixture - never production")
+    checksum = hashlib.sha256(dump.read_bytes()).hexdigest()
+    (backup_dir / (name + ".sha256")).write_text(
+        f"{checksum}  {name}\n", encoding="ascii",
+    )
+    state_file = tmp_path / "private" / "health-state.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "ops_health_alert.py"),
+            "--backup-root", str(backup_dir),
+            "--app-root", str(tmp_path),
+            "--restore-first-due", "2099-01-01T00:00:00+00:00",
+            "--state-file", str(state_file),
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "healthy"
+    assert payload["snapshot"]["backup_state"] == "fresh"
+    assert payload["snapshot"]["restore_state"] == "not_due"
+    assert payload["action"] == "would_none"
+    assert payload["dry_run"] is True
+    assert not state_file.exists()
+    assert not state_file.parent.exists()
 
 
 def test_script_never_manages_docker_database_or_cron():

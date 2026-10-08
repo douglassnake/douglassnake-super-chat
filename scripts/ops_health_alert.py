@@ -210,6 +210,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--remind-hours", type=float, default=24)
     parser.add_argument("--state-file", type=Path, default=DEFAULT_STATE_FILE)
     parser.add_argument("--dry-run", action="store_true", help="No logger or local state write")
+    # M14.2 evaluate() expects args.now; real operations use the UTC clock.
+    parser.set_defaults(now=None)
     return parser
 
 
