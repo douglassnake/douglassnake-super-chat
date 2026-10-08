@@ -74,6 +74,19 @@ def test_future_dated_backup_is_invalid(tmp_path: Path):
     assert probe.check_backup(tmp_path, NOW, 36)["reason"] == "future_dated_backup"
 
 
+
+def test_malformed_filename_timestamp_is_reported_not_crashed(tmp_path: Path):
+    broken = tmp_path / "auto-superchat-20261399T061501Z.dump"
+    broken.write_bytes(b"fixture")
+    digest = hashlib.sha256(broken.read_bytes()).hexdigest()
+    Path(str(broken) + ".sha256").write_text(
+        f"{digest}  {broken.name}\n", encoding="ascii",
+    )
+    result = probe.check_backup(tmp_path, NOW, 36)
+    assert result["state"] == "invalid"
+    assert result["reason"] == "invalid_filename_timestamp"
+
+
 def test_symlink_checksum_is_rejected(tmp_path: Path):
     dump = backup(tmp_path)
     sidecar = Path(str(dump) + ".sha256")
