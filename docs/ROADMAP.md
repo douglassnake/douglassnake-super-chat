@@ -190,18 +190,15 @@ Plano e fechamento: `docs/M13_CONTINUOUS_CONTEXT.md`.
 ## M14 — confiabilidade operacional e recuperação
 Issue principal: #94.
 
-Status: **planejamento iniciado em 08/10/2026**; nenhuma alteração de runtime/cron autorizada.
+Status em **08/10/2026**: **M14.1–M14.4 concluídos; M14.5 pendente** de evidência real do primeiro restore automático agendado para domingo **11/10/2026, 04h (-03)**. O exercício manual de restauração **não substitui** essa validação dominical.
 
-O M12 já entregou backup automático, retenção, restore-check descartável e auditoria de armazenamento; o M13 acrescentou sync GitHub agendado. O M14 **não reimplementará essas rotinas**: adicionará evidências recentes, verificações de frescor e alertas locais após auditar o host real.
+- **M14.1 — auditoria real do host:** verificados Git, cron, backups, SHA-256, espaço, containers, logs e ausência de bancos temporários órfãos.
+- **M14.2 — saúde e frescor:** `scripts/ops_health_check.py` validado no ZimaOS; distingue backup `fresh` e restore `not_due` antes da primeira execução.
+- **M14.3 — observabilidade e alertas locais:** `scripts/ops_health_alert.py`, deduplicação, estado privado 0700/0600, logger/journal validados; cron horário `45 * * * *` instalado e primeira execução automática `healthy` comprovada. **Nenhum alerta externo está configurado.**
+- **M14.4 — exercício de recuperação:** `scripts/ops_restore_check.sh` reutilizado em DB descartável; `DRILL_EXIT=0`, duração de 7 s, integration readiness aprovado, 0 bancos temporários restantes; teste negativo `NEGATIVE_EXIT=1`, lock limpo. Duração do ensaio e idade do dump são **proxies observados**, não SLAs de RTO/RPO.
+- **M14.5 — validação final:** checklist versionado e CI aprovado. Encerramento depende de evidência da execução **automática** do restore dominical em log separado, `restore=fresh`, ausência de bancos/locks, cron único e serviços saudáveis. **Ainda não concluído.**
 
-Etapas planejadas:
-- M14.1 — auditar read-only cron, backup atual, último restore-check, logs, espaço e containers;
-- M14.2 — monitorar saúde e idade das rotinas com thresholds configuráveis;
-- M14.3 — registrar falhas com exit codes e alertas locais, sem envio externo por padrão;
-- M14.4 — exercício de recuperação em banco descartável, medindo RPO/RTO;
-- M14.5 — validação final ZimaOS/NAS com CI e evidências sanitizadas.
-
-Auditoria inicial: `docs/M14_1_REAL_HOST_AUDIT.md`. Sem restart de PostgreSQL, rebuild por documentação ou alterações de cron sem evidência.
+Runbooks: `docs/M14_1_REAL_HOST_AUDIT.md`, `docs/M14_3_LOCAL_ALERTS.md`, `docs/M14_4_RECOVERY_DRILL.md` e `docs/M14_5_FINAL_AUDIT.md`. Não reiniciar o PostgreSQL por operações documentais.
 
 ## Regra de evolução
 
