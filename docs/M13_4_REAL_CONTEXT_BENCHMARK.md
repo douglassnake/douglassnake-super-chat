@@ -52,3 +52,28 @@ docker exec -i -w /app -e PYTHONPATH=/app app-api-1 \
 ```
 
 No host real, o manifesto deverá ser copiado temporariamente para o container ou montado de forma privada e removido após a execução.
+
+
+## Resultado real — 08/10/2026
+
+O benchmark foi executado no ZimaOS/NAS contra os três projetos ativos, usando manifesto privado fora do Git.
+
+| Projeto | Recall@5 | Expectativas críticas |
+| --- | ---: | ---: |
+| Camara360 | 1,0 | 3/3 |
+| MeuNegócio IA | 1,0 | 2/2 |
+| Super Chat / Segundo Cérebro | 1,0 | 3/3 |
+
+Resumo:
+- média de recall@k: 1,0;
+- latência média: 17,9 ms;
+- compressão média: 0,17175;
+- nenhuma falha crítica;
+- nenhum projeto ausente;
+- exit code 0;
+- `ContextRun` permaneceu 8 → 8;
+- PostgreSQL principal não reiniciou.
+
+Gate: **aprovado**.
+
+Decisão: `defer_m7_1`. O mecanismo lexical atual permanece como padrão; embeddings/pgvector só voltam a ser considerados se novos casos reais demonstrarem perda de recuperação ou se um protótipo semântico mostrar ganho mensurável.

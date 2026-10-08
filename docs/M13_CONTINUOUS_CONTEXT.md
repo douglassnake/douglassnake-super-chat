@@ -120,22 +120,25 @@ Distinguir claramente:
 
 ## M13.3 — digest e revisão humana
 
-Eventos novos devem alimentar uma camada de revisão, não memória definitiva.
+Status: **concluído em 08/10/2026**.
 
-O digest deve:
+Eventos novos alimentam uma fila de revisão via `SessionDelta`, nunca memória definitiva diretamente.
 
-- agrupar mudanças por projeto e janela de sincronização;
-- destacar PRs, issues e workflows relevantes;
-- evitar transformar runs de sucesso repetitivos em ruído;
-- sugerir, quando houver evidência suficiente, possíveis tarefas, decisões ou memórias;
-- exigir revisão/aplicação explícita;
-- não repetir item já revisado ou promovido.
+Validação no host:
+- digest criado somente para eventos novos da janela;
+- apenas um digest pendente por projeto;
+- preview mostrou explicitamente tarefas/decisões/status/próxima ação antes de qualquer aplicação;
+- descarte humano manteve a memória operacional inalterada;
+- o mesmo digest descartado não foi recriado na sincronização seguinte;
+- runs de sucesso repetitivos não geram tarefas.
 
-A infraestrutura existente de `SessionDelta` e `GraphSuggestionBatch` deve ser reutilizada quando o contrato encaixar, em vez de criar uma segunda fila paralela sem necessidade.
+Detalhes: `docs/M13_3_DIGEST_REVIEW.md`.
 
 ## M13.4 — benchmark com projetos reais
 
-O M7.0 validou o Context Engine com fixture sintética. Agora é possível medir recuperação com dados reais.
+Status: **concluído em 08/10/2026**.
+
+O M7.0 validou o Context Engine com fixture sintética. O M13.4 mediu recuperação com dados reais sem exportar conteúdo privado para o repositório.
 
 ### Corpus mínimo
 
@@ -163,23 +166,40 @@ Cada projeto deve ter perguntas representativas de retomada, por exemplo:
 - presença de ruído;
 - latência.
 
-### Decisão M7.1
+### Resultado e decisão M7.1
 
-Busca híbrida/semântica só deve entrar se o benchmark real demonstrar ganho mensurável sobre o mecanismo lexical atual em consultas importantes. Caso o lexical continue suficiente, M7.1 permanece adiado.
+No host real:
+- `camara360`: recall@5 = 1,0;
+- `meunegocio-ia`: recall@5 = 1,0;
+- `super-chat-segundo-cerebro`: recall@5 = 1,0;
+- média de recall@k = 1,0;
+- latência média = 17,9 ms;
+- `critical_failures=[]`;
+- `missing_projects=[]`;
+- benchmark read-only: `ContextRun` permaneceu 8 → 8;
+- decisão: `defer_m7_1`.
+
+M7.1 permanece adiado até nova evidência mensurável justificar busca híbrida/semântica.
 
 ## M13.5 — validação operacional
 
-O marco encerra somente após:
+Status: **concluído em 08/10/2026**.
 
-- sync manual real bem-sucedido no ZimaOS;
+Critérios validados no ZimaOS/NAS:
+
+- sync manual real bem-sucedido;
 - reexecução idempotente sem duplicar eventos;
-- falha simulada de uma fonte sem impedir as demais;
-- cron instalado e confirmado;
-- estado de frescor visível;
-- digest sem promoção automática;
-- benchmark real executado;
-- documentação atualizada;
-- PostgreSQL principal sem restart causado pela rotina.
+- falha de uma fonte isolada sem impedir as demais;
+- cron `*/30 * * * *` instalado e observado em execução real;
+- logging via `logger -t superchat-github-sync` no journal;
+- estado de frescor visível para as fontes GitHub;
+- digest com revisão humana e sem promoção automática;
+- descarte de digest sem recriação posterior;
+- benchmark real read-only executado;
+- PostgreSQL principal sem restart causado pelas rotinas;
+- M7.1 adiado por evidência objetiva.
+
+O M13 não autoriza escrita externa no GitHub e não altera a política de revisão humana.
 
 ## Sequência proposta
 
