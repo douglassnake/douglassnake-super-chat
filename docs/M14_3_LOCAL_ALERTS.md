@@ -32,7 +32,7 @@ Após validação em produção de `logger`/journal, `dry-run`, execução norma
 
     45 * * * * cd /DATA/AppData/superchat/app && umask 077 && ./.venv/bin/python scripts/ops_health_alert.py --restore-first-due 2026-10-11T04:00:00-03:00 > /DATA/AppData/superchat/private/m14-3/health-last-run.log 2>&1; rc=$?; if [ "$rc" -gt 2 ]; then /usr/bin/logger -t superchat-ops-health -p user.err "health-cron: internal-error"; fi
 
-A alteração foi precedida por backup privado do crontab e confirmação, após instalação, de **exatamente 1 entrada** para backup, restore-check, GitHub sync e health-alert. **A primeira execução automática ainda não foi comprovada**; isso deve ser verificado no `health-last-run.log` após o próximo minuto 45. Falhas internas (exit > 2) disparam mensagem local; estados failed/degraded são emitidos no journal pelo wrapper. Nenhum webhook, e-mail, WhatsApp ou alerta externo foi configurado.
+A alteração foi precedida por backup privado do crontab e confirmação, após instalação, de **exatamente 1 entrada** para backup, restore-check, GitHub sync e health-alert. **A primeira execução automática foi comprovada em 08/10/2026** no `health-last-run.log`, com `status=healthy`, `action=none`, `dry_run=false`, backup `fresh`, restore `not_due` e armazenamento saudável. A ausência de alerta é esperada em estado saudável. O primeiro restore dominical, entretanto, permanece pendente até 11/10/2026. Falhas internas (exit > 2) disparam mensagem local; estados failed/degraded são emitidos no journal pelo wrapper. Nenhum webhook, e-mail, WhatsApp ou alerta externo foi configurado.
 
 ## Limitações
 
