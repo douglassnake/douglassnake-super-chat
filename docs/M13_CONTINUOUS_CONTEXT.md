@@ -36,7 +36,7 @@ O foco é manter contexto fresco, tornar a defasagem visível e preservar revis�
 
 Adicionar uma rotina operacional que:
 
-- seleciona somente projetos `active`;
+- seleciona projetos `active`, `implementation` e `planning` com fonte GitHub ativa; exclui `paused` e `done`;
 - seleciona somente fontes GitHub ativas;
 - reutiliza `sync_project_github`;
 - usa lock para impedir concorrência;
@@ -65,6 +65,14 @@ A rotina é composta por:
 
 - `scripts/ops_github_sync.py` — seleciona projetos/fontes elegíveis, executa a sincronização e emite relatório JSON saneado;
 - `scripts/ops_github_sync.sh` — wrapper do host que executa o runner dentro do container da API, onde o secret backend e a conexão com o banco já estão disponíveis.
+
+A elegibilidade usa **o status do projeto** e **a ativação da fonte** como controles independentes:
+fontes GitHub `is_active=true` de projetos `active`, `implementation` ou `planning`
+entram no agendamento; projetos `paused` e `done` ficam fora. A seleção não
+muda o status do projeto, não cria fonte nova e não concede acesso adicional ao
+repositório. O conector ainda depende das permissões GitHub configuradas no host.
+Essa ampliação deve ser validada com `--check` após deploy antes da primeira
+sincronização real das fontes adicionais.
 
 O modo de diagnóstico não chama GitHub e não grava no banco:
 
