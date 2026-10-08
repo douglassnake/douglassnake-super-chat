@@ -50,6 +50,7 @@ Cada efeito externo tem autorização própria. Relações descobertas pelo graf
 - **M12.1–M12.5** — operação contínua no ZimaOS/NAS, checkpoint real do host e documentação consolidada;
 - **M12.6** — onboarding controlado dos projetos reais no Segundo Cérebro;
 - **M13.1–M13.5** — atualização contínua das fontes, frescor do contexto, digest revisável, benchmark real de recuperação e fechamento operacional no ZimaOS/NAS.
+- **M14.1–M14.4** — auditoria real, saúde e frescor de backups, alertas locais e exercício de restauração em banco descartável; **M14.5 pendente do primeiro restore automático em 11/10/2026**.
 
 O checkpoint operacional real do ZimaOS/NAS foi concluído em **06/10/2026** no commit `dd9eab884deed3865e51ffa68ac3cc9ddb37986f`. A Issue #57 foi fechada com critério GO para operação interna.
 
@@ -184,6 +185,16 @@ Interface: `http://127.0.0.1:8000/app/`
 OpenAPI: `http://127.0.0.1:8000/docs`
 
 Em `development`, autenticação permanece desabilitada por padrão para DX/testes.
+
+
+## Confiabilidade e recuperação — M14
+
+Em 08/10/2026, M14.1–M14.4 foram validados no ZimaOS: backups íntegros, health-check, alertas locais deduplicados via journal, cron de monitoramento horário e restauração manual em banco descartável. O ensaio de recuperação concluiu com código 0 em **7 s** e limpeza comprovada; o teste negativo não deixou lock nem banco temporário órfão.
+
+**Pendente para encerrar M14.5:** confirmar que o restore dominical automático previsto para **11/10/2026 às 04:00 (-03)** executou e passou, com evidência em `restore-check.log` e `ops_health_check.py` retornando `restore=fresh`. O monitoramento não envia notificações externas por padrão.
+
+Veja `docs/M14_5_FINAL_AUDIT.md` e a Issue #94. Esse marco não exige rebuild ou reinício dos serviços.
+
 
 ## Segurança de dados
 
