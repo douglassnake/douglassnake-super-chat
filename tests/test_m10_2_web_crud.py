@@ -100,6 +100,7 @@ def test_web_ui_exposes_daily_operation_controls(crud_client: TestClient) -> Non
     for marker in [
         "Novo projeto",
         "Editar projeto",
+        "Revisar mudanças",
         "+ Tarefa",
         "+ Decisão",
         "+ Memória",
