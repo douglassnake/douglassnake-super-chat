@@ -187,6 +187,22 @@ Evidências principais:
 
 Plano e fechamento: `docs/M13_CONTINUOUS_CONTEXT.md`.
 
+## M14 — confiabilidade operacional e recuperação
+Issue principal: #94.
+
+Status: **planejamento iniciado em 08/10/2026**; nenhuma alteração de runtime/cron autorizada.
+
+O M12 já entregou backup automático, retenção, restore-check descartável e auditoria de armazenamento; o M13 acrescentou sync GitHub agendado. O M14 **não reimplementará essas rotinas**: adicionará evidências recentes, verificações de frescor e alertas locais após auditar o host real.
+
+Etapas planejadas:
+- M14.1 — auditar read-only cron, backup atual, último restore-check, logs, espaço e containers;
+- M14.2 — monitorar saúde e idade das rotinas com thresholds configuráveis;
+- M14.3 — registrar falhas com exit codes e alertas locais, sem envio externo por padrão;
+- M14.4 — exercício de recuperação em banco descartável, medindo RPO/RTO;
+- M14.5 — validação final ZimaOS/NAS com CI e evidências sanitizadas.
+
+Auditoria inicial: `docs/M14_1_REAL_HOST_AUDIT.md`. Sem restart de PostgreSQL, rebuild por documentação ou alterações de cron sem evidência.
+
 ## Regra de evolução
 
 Cada efeito externo deve ter autorização própria, input resolvido pelo servidor, prova de estado anterior, verificação pós-efeito, segredo fora do estado persistido e reconciliação explícita quando rollback total não for possível.
