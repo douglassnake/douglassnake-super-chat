@@ -255,6 +255,17 @@ function renderOverview(data, tasks, decisions, memories) {
   const hasGithub = data.sources.some((source) => source.source_type === "github" && source.is_active);
   $("#github-sync-button").classList.toggle("hidden", !hasGithub);
 
+  const pendingGithubDigest = data.pending_deltas.find((delta) =>
+    String(delta.session_key || "").startsWith("github-digest:")
+  );
+  const digestButton = $("#github-digest-button");
+  digestButton.classList.toggle("hidden", !pendingGithubDigest);
+  if (pendingGithubDigest) {
+    digestButton.dataset.deltaId = pendingGithubDigest.id;
+  } else {
+    delete digestButton.dataset.deltaId;
+  }
+
   $("#delta-count").textContent = `${data.pending_deltas.length} pendente(s)`;
   $("#delta-list").innerHTML = data.pending_deltas.length ? data.pending_deltas.map((delta) => `
     <div class="item-card clickable" data-delta-id="${escapeHtml(delta.id)}">
@@ -638,6 +649,10 @@ $("#new-memory-button").addEventListener("click", () => openMemoryEditor());
 $("#new-source-button").addEventListener("click", openSourceEditor);
 $("#continue-button").addEventListener("click", continueProject);
 $("#github-sync-button").addEventListener("click", syncGithub);
+$("#github-digest-button").addEventListener("click", (event) => {
+  const deltaId = event.currentTarget.dataset.deltaId;
+  if (deltaId) openDeltaPreview(deltaId);
+});
 $("#apply-delta").addEventListener("click", applyDelta);
 $("#discard-delta").addEventListener("click", discardDelta);
 $("#editor-form").addEventListener("submit", submitEditor);

@@ -152,6 +152,7 @@ def sync_active_github_projects(
             created = int(result.get("created_events") or 0)
             skipped = int(result.get("skipped_events") or 0)
             source_count = int(result.get("source_count") or target.source_count)
+            digest = result.get("digest") or {}
 
             report.update(
                 {
@@ -159,6 +160,12 @@ def sync_active_github_projects(
                     "source_count": source_count,
                     "created_events": created,
                     "skipped_events": skipped,
+                    "digest": {
+                        "created": bool(digest.get("created")),
+                        "pending_exists": bool(digest.get("pending_exists")),
+                        "event_count": int(digest.get("event_count") or 0),
+                        "suggested_tasks": int(digest.get("suggested_tasks") or 0),
+                    },
                 }
             )
             total_created += created

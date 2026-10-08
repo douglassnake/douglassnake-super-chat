@@ -123,7 +123,7 @@ def prepare_github_onboarding(
 
     _ensure_no_pending_onboarding(db, project.id)
 
-    sync_result = sync_project_github(db, project, reader=reader)
+    sync_result = sync_project_github(db, project, reader=reader, create_digest=False)
     now = datetime.now(timezone.utc)
 
     repositories: list[str] = []

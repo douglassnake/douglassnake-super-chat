@@ -184,6 +184,8 @@ def sync_project_github(
     db: Session,
     project: Project,
     reader: GitHubReader | None = None,
+    *,
+    create_digest: bool = True,
 ) -> dict[str, Any]:
     sources_stmt = select(ProjectSource).where(
         ProjectSource.project_id == project.id,
@@ -337,6 +339,17 @@ def sync_project_github(
         if sources:
             project.last_activity_at = now
         db.commit()
+
+        digest_result = None
+        if sources and create_digest:
+            from app.github_digest import prepare_automatic_github_digest
+
+            digest_result = prepare_automatic_github_digest(
+                db,
+                project,
+                sync_started_at=now,
+                sync_completed_at=datetime.now(timezone.utc),
+            )
     except Exception:
         db.rollback()
         raise
@@ -351,4 +364,5 @@ def sync_project_github(
         "skipped_events": total_skipped,
         "sources": source_results,
         "synced_at": now,
+        "digest": digest_result,
     }
