@@ -56,11 +56,14 @@ def _seed_project(
         db.commit()
 
 
-def test_check_lists_only_active_projects_with_active_github_sources() -> None:
+def test_check_lists_supported_project_statuses_with_active_github_sources() -> None:
     engine, SessionFactory = _session_factory()
     try:
-        _seed_project(SessionFactory, slug="alpha")
-        _seed_project(SessionFactory, slug="inactive-project", status="paused")
+        _seed_project(SessionFactory, slug="alpha-active")
+        _seed_project(SessionFactory, slug="beta-implementation", status="implementation")
+        _seed_project(SessionFactory, slug="gamma-planning", status="planning")
+        _seed_project(SessionFactory, slug="paused-project", status="paused")
+        _seed_project(SessionFactory, slug="done-project", status="done")
         _seed_project(SessionFactory, slug="inactive-source", github_active=False)
         _seed_project(SessionFactory, slug="no-source", github_active=None)
 
@@ -68,10 +71,41 @@ def test_check_lists_only_active_projects_with_active_github_sources() -> None:
 
         assert report["mode"] == "check"
         assert report["totals"] == {
-            "eligible_projects": 1,
-            "source_count": 1,
+            "eligible_projects": 3,
+            "source_count": 3,
         }
-        assert [item["slug"] for item in report["projects"]] == ["alpha"]
+        assert [item["slug"] for item in report["projects"]] == [
+            "alpha-active", "beta-implementation", "gamma-planning"
+        ]
+    finally:
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+
+
+def test_sync_processes_implementation_and_planning_without_paused_or_done() -> None:
+    engine, SessionFactory = _session_factory()
+    try:
+        _seed_project(SessionFactory, slug="implementation", status="implementation")
+        _seed_project(SessionFactory, slug="planning", status="planning")
+        _seed_project(SessionFactory, slug="paused", status="paused")
+        _seed_project(SessionFactory, slug="done", status="done")
+
+        calls: list[str] = []
+
+        def fake_sync(db: Session, project: Project) -> dict:
+            calls.append(project.slug)
+            return {
+                "source_count": 1,
+                "created_events": 0,
+                "skipped_events": 0,
+            }
+
+        report = sync_active_github_projects(SessionFactory, fake_sync)
+
+        assert calls == ["implementation", "planning"]
+        assert report["totals"]["eligible_projects"] == 2
+        assert report["totals"]["successful_projects"] == 2
+        assert report["totals"]["failed_projects"] == 0
     finally:
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
