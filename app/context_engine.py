@@ -562,6 +562,7 @@ def build_context_package(
                 "content": item.content,
                 "source_type": item.source_type,
                 "source_ref": item.source_ref,
+                "timestamp": item.timestamp,
                 "score": item.score,
                 "estimated_tokens": item.estimated_tokens,
             }
