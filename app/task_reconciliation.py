@@ -129,6 +129,9 @@ def collect_ci_reconciliation_hints(
                 continue
             if str((last.metadata_json or {}).get("status") or "").lower() != "completed":
                 continue
+            # Missing URLs must never produce a corroborated review suggestion.
+            if not failure.url or not last.url:
+                continue
 
             report["suggestions"].append(
                 {

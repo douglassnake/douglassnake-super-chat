@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.ops import build_operational_status, build_operational_summary, build_recent_failures
+from app.task_reconciliation import collect_ci_reconciliation_hints
 
 router = APIRouter(prefix="/ops", tags=["operations"])
 
@@ -35,3 +36,12 @@ def operational_failures(
     db: Session = Depends(get_db),
 ) -> dict:
     return {"items": build_recent_failures(db, limit=limit), "limit": limit}
+
+
+@router.get("/task-reconciliation")
+def task_reconciliation_preview(
+    project_slug: str | None = Query(default=None, min_length=1, max_length=160),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Read-only preview. No task completion or project update occurs here."""
+    return collect_ci_reconciliation_hints(db, project_slug=project_slug)
