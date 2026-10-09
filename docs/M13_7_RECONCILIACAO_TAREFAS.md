@@ -1,6 +1,6 @@
 # M13.7 — Reconciliação de tarefas e contexto operacional
 
-Estado: planejamento técnico, sem aprovação para merge ou deploy.
+Estado: implementação de prévia somente leitura concluída na branch; CI e revisão humana necessárias antes de merge ou deploy.
 
 ## Diagnóstico confirmado no código
 
@@ -60,3 +60,24 @@ Testes Python e front-end, integração read-only, regressões M13.6, CI verde, 
 ## Componente preexistente identificado
 
 O arquivo `app/task_reconciliation.py` já está em `main` e implementa `collect_ci_reconciliation_hints(db, project_slug=None)` como avaliação somente leitura, limitada às tarefas intituladas `Investigar novas falhas de CI`. Ele compara repositório, workflow e branch das execuções associadas a eventos do GitHub e só sugere revisão após sucesso posterior. **A M13.7 não deve duplicar esse avaliador.** Revisar primeiro se há endpoint, testes, cobertura de casos adversos e frescor da sincronização. A implementação incremental deve partir desse componente e preservar `changes_applied: 0` nas consultas.
+
+## Implementação efetivamente entregue no PR #105
+
+- `GET /ops/task-reconciliation?project_slug=...`: prévia restrita à leitura e sem efeito colateral.
+- Painel com botão **Verificar evidências**, sem ações de encerramento e com links para as duas execuções.
+- Invalidação de respostas de consultas antigas após mudança/recarregamento do projeto.
+- Guardas de URL e cenários de regressão automatizados: sucesso posterior comparável, workflow diferente, sucesso anterior, falha posterior, ausência de URL e falha mais recente que sucesso.
+- Limitação deliberada: a rotina trabalha exclusivamente com o título `Investigar novas falhas de CI`, com evento `event:UUID` e metadados de repositório/workflow/branch disponíveis. Ausência de sugestão **não implica** tarefa resolvida.
+- Limitação de proveniência: a consulta utiliza os eventos persistidos localmente. A verificação de frescor da sincronização e a inspeção de jobs/escopo ainda são controles humanos necessários; não converter `possibly stale` em `resolved` automaticamente.
+
+## Roteiro de validação no ZimaOS — após integração autorizada
+
+1. Verificar que a branch `main` e a imagem implantada são coerentes, que o backup existe e que os containers estão saudáveis, sem reiniciar PostgreSQL.
+2. Consultar a prévia de CI dos projetos Radar Guarda-Mor e MeuNegócio IA, após autenticação manual do operador, sem compartilhar sessão/cookies/tokens.
+3. Verificar manualmente cada URL de execução com escopo, commit, branch, workflow, job e timestamp.
+4. Trocar rapidamente de projeto no painel durante uma consulta; não podem aparecer sugestões do projeto anterior.
+5. Confirmar que `Task.status`, `Project.next_action` e quantidade de tarefas permanecem idênticos antes e depois das consultas.
+6. Confirmar que nenhum fechamento de tarefa ocorre sem decisão específica e auditada.
+7. Repetir as verificações nas três opções de perfil do contexto e conferir integridade da M13.6.
+
+**Gate de liberação:** CI do HEAD do PR verde, diff revisado, aprovação expressa para merge e implantação, resultado real das consultas autenticadas e rollback disponível. A M14.5 permanece independente.
