@@ -92,6 +92,11 @@ def test_web_app_and_dashboard_flow(web_client: TestClient) -> None:
     assert js.status_code == 200
     assert "window.confirm" in js.text
     assert "/continue" in js.text
+    assert "function clearContextPreview()" in js.text
+    assert "state.selectedProjectId !== projectId" in js.text
+    assert "packageData.project.id !== projectId" in js.text
+    assert "Próxima ação registrada" in js.text
+    assert "histórico" in js.text
 
     empty_dashboard = web_client.get("/dashboard")
     assert empty_dashboard.status_code == 200
