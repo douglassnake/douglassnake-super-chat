@@ -228,7 +228,7 @@ async function checkCiReconciliation() {
           await api("/ops/task-reconciliation/reviews", {
             method: "POST",
             body: JSON.stringify({
-              request_id: crypto.randomUUID(),
+              request_id: control.dataset.reviewRequestId || (control.dataset.reviewRequestId = crypto.randomUUID()),
               task_id: taskId,
               expected_updated_at: task.updated_at,
               decision,
