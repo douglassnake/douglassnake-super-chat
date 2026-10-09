@@ -49,3 +49,36 @@ def test_ops_preview_delegates_without_writes(monkeypatch):
     assert observed == [(sentinel, "radar-guarda-mor")]
     assert result["changes_applied"] == 0
     assert result["suggestions"] == []
+
+
+
+def test_preview_does_not_expose_mutation_route():
+    paths = [
+        route.path
+        for route in ops_routes.router.routes
+        if "task-reconciliation" in route.path
+    ]
+    assert paths == ["/ops/task-reconciliation"]
+    methods = [
+        route.methods
+        for route in ops_routes.router.routes
+        if route.path == "/ops/task-reconciliation"
+    ]
+    assert methods == [{"GET"}]
+
+
+def test_interface_invalidates_pending_requests():
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "web" / "app.js").read_text(
+        encoding="utf-8"
+    )
+    html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="reconciliation-results"' in html
+    assert "++state.reconciliationRequestId" in js
+    assert "state.reconciliationRequestId !== requestId" in js
+    assert 'state.reconciliationRequestId += 1;' in js
+    assert 'const failureUrl = safeUrl(entry.failure_run_url)' in js
+    assert 'const successUrl = safeUrl(entry.success_run_url)' in js
