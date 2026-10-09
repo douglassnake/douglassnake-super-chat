@@ -198,10 +198,53 @@ async function checkCiReconciliation() {
         <p>${escapeHtml(entry.caution || "Evidência posterior não autoriza encerramento automático.")}</p>
         ${failureUrl ? `<a href="${escapeHtml(failureUrl)}" target="_blank" rel="noopener noreferrer">Falha original</a>` : ""}
         ${successUrl ? `<a href="${escapeHtml(successUrl)}" target="_blank" rel="noopener noreferrer">Execução posterior</a>` : ""}
+        <div class="context-controls">
+          <select aria-label="Decisão da revisão" data-review-decision="${escapeHtml(entry.task_id)}">
+            <option value="needs_investigation">Manter em investigação</option>
+            <option value="keep_open">Manter tarefa aberta</option>
+          </select>
+          <textarea aria-label="Justificativa da revisão" data-review-justification="${escapeHtml(entry.task_id)}" placeholder="Justificativa obrigatória (mínimo de 15 caracteres)"></textarea>
+          <button class="button ghost compact" type="button" data-record-review="${escapeHtml(entry.task_id)}">Registrar revisão sem encerrar tarefa</button>
+        </div>
       </div>`;
     }).join("") : (Array.isArray(data.diagnostics) && data.diagnostics.length
       ? data.diagnostics.map((item) => `<div class="item-card"><strong>${escapeHtml(item.classification === "insufficient_evidence" ? "Evidência insuficiente" : "Sem tarefa de CI correspondente")}</strong><p>${escapeHtml(item.reason)}</p></div>`).join("")
       : '<p class="muted">Nenhuma sugestão corroborada. Isso não comprova ausência de pendências.</p>');
+    target.querySelectorAll("[data-record-review]").forEach((control) => {
+      control.addEventListener("click", async () => {
+        const taskId = control.dataset.recordReview;
+        const task = state.tasks.find((item) => item.id === taskId);
+        const selected = suggestions.find((item) => item.task_id === taskId);
+        if (!task || !selected || state.selectedProjectId !== projectId) return;
+        const justification = target.querySelector(`[data-review-justification="${taskId}"]`).value.trim();
+        const decision = target.querySelector(`[data-review-decision="${taskId}"]`).value;
+        if (justification.length < 15) {
+          showToast("Informe uma justificativa com pelo menos 15 caracteres.", true);
+          return;
+        }
+        if (!window.confirm("Registrar revisão auditável sem concluir a tarefa?")) return;
+        setButtonBusy(control, true, "Registrando…");
+        try {
+          await api("/ops/task-reconciliation/reviews", {
+            method: "POST",
+            body: JSON.stringify({
+              request_id: crypto.randomUUID(),
+              task_id: taskId,
+              expected_updated_at: task.updated_at,
+              decision,
+              justification,
+              evidence_urls: [selected.failure_run_url, selected.success_run_url].filter(Boolean),
+            }),
+          });
+          if (state.selectedProjectId === projectId) showToast("Revisão registrada. A tarefa continua aberta.");
+        } catch (error) {
+          if (state.selectedProjectId === projectId) showToast(`Falha ao registrar revisão: ${error.message}`, true);
+        } finally {
+          setButtonBusy(control, false);
+        }
+      });
+    });
+
   } catch (error) {
     if (state.selectedProjectId === projectId && state.reconciliationRequestId === requestId) target.textContent = `Não foi possível verificar: ${error.message}`;
   } finally {
