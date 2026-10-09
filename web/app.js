@@ -76,8 +76,8 @@ function slugify(value) {
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;
