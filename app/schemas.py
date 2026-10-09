@@ -240,6 +240,7 @@ class ContextSelectedItem(BaseModel):
     content: str
     source_type: str
     source_ref: str | None
+    timestamp: datetime | None = None
     score: float
     estimated_tokens: int
 
