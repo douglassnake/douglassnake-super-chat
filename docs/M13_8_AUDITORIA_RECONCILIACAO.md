@@ -1,6 +1,6 @@
 # M13.8 — Contrato de decisão humana auditável
 
-Status: especificação de segurança, **sem endpoint de escrita habilitado**.
+Status: revisão humana auditável implementada na branch; conclusão de tarefas e atualização da próxima ação **não são habilitadas**.
 
 ## Diagnóstico do código existente
 
@@ -35,3 +35,12 @@ Status: especificação de segurança, **sem endpoint de escrita habilitado**.
 ## Limites desta entrega
 
 A M13.8 inicial oferece explicações em português e diagnósticos somente leitura. O workflow transacional de escrita acima exige implementação e homologação próprias antes de ser exposto no painel. Não marcar concluído apenas por existir esta especificação.
+
+## Implementação de revisão auditável — etapa 1
+
+- A rota POST `/ops/task-reconciliation/reviews` grava um evento manual com identificação do ator autenticado, justificativa, URLs GitHub, versão da tarefa e decisão `keep_open` ou `needs_investigation`.
+- Exige autenticação habilitada, usuário administrador e proteção CSRF fornecida pelo middleware.
+- Bloqueia a linha da tarefa durante a transação e rejeita estado obsoleto.
+- A chave de requisição `request_id` permite repetição idempotente; divergência entre cargas gera conflito.
+- O painel exige confirmação e justificativa; não permite concluir tarefa ou alterar o cadastro oficial.
+- **Permanece pendente** a implementação separada de conclusão de tarefa e edição da próxima ação com auditoria transacional e aceitação explícita. A reconciliação não deve se tornar uma forma indireta de concluí-las.
