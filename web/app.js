@@ -6,6 +6,7 @@ const state = {
   decisions: [],
   memories: [],
   currentDeltaId: null,
+  reconciliationRequestId: 0,
   editor: null,
 };
 
@@ -179,13 +180,14 @@ async function checkCiReconciliation() {
   const projectId = state.selectedProjectId;
   const project = state.overview?.project;
   if (!projectId || !project || project.id !== projectId) return;
+  const requestId = ++state.reconciliationRequestId;
   const target = $("#reconciliation-results");
   const button = $("#reconciliation-check-button");
   target.textContent = "Consultando evidências registradas…";
   setButtonBusy(button, true, "Verificando…");
   try {
     const data = await api(`/ops/task-reconciliation?project_slug=${encodeURIComponent(project.slug)}`);
-    if (state.selectedProjectId !== projectId) return;
+    if (state.selectedProjectId !== projectId || state.reconciliationRequestId !== requestId) return;
     const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
     target.innerHTML = suggestions.length ? suggestions.map((entry) => {
       const failureUrl = safeUrl(entry.failure_run_url);
@@ -199,14 +201,16 @@ async function checkCiReconciliation() {
       </div>`;
     }).join("") : '<p class="muted">Nenhuma sugestão corroborada. Isso não comprova ausência de pendências.</p>';
   } catch (error) {
-    if (state.selectedProjectId === projectId) target.textContent = `Não foi possível verificar: ${error.message}`;
+    if (state.selectedProjectId === projectId && state.reconciliationRequestId === requestId) target.textContent = `Não foi possível verificar: ${error.message}`;
   } finally {
-    setButtonBusy(button, false);
+    if (state.reconciliationRequestId === requestId) setButtonBusy(button, false);
   }
 }
 
 async function selectProject(projectId) {
   if (state.selectedProjectId !== projectId) {
+    state.reconciliationRequestId += 1;
+    setButtonBusy($("#reconciliation-check-button"), false);
     clearContextPreview();
     $("#reconciliation-results").replaceChildren();
     $("#context-query").value = "";
@@ -230,7 +234,9 @@ function renderOverview(data, tasks, decisions, memories) {
   $("#detail-name").textContent = project.name;
   $("#detail-description").textContent = project.description || `Atualizado em ${shortDate(project.updated_at)}`;
   $("#detail-next-action").textContent = project.next_action || "Não definida";
+  state.reconciliationRequestId += 1;
   $("#reconciliation-results").replaceChildren();
+  setButtonBusy($("#reconciliation-check-button"), false);
   $("#reconciliation-check-button").onclick = checkCiReconciliation;
 
   const ring = $("#detail-health");
