@@ -16,9 +16,11 @@ class FakeSession:
         self.commits = 0
 
     def scalar(self, query):
-        if not self.events:
+        from app.models import Task
+        entity = query.column_descriptions[0]["entity"]
+        if entity is Task:
             return self.task
-        return self.events[0]
+        return self.events[0] if self.events else None
 
     def add(self, value):
         self.events.append(value)
