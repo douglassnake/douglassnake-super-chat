@@ -100,3 +100,25 @@ def test_review_rejects_invalid_evidence_url_and_stale_task():
         record_review(payload.model_copy(update={"expected_updated_at": "2025-01-01T00:00:00Z"}), request, db)
     assert exc.value.status_code == 409
     assert db.commits == 0
+
+
+def test_review_rejects_non_admin_and_closed_task():
+    request, task, payload = _context()
+    request.state.auth_principal["role"] = "viewer"
+    with pytest.raises(HTTPException) as exc:
+        record_review(payload, request, FakeSession(task))
+    assert exc.value.status_code == 403
+    request.state.auth_principal["role"] = "admin"
+    task.status = "done"
+    with pytest.raises(HTTPException) as exc:
+        record_review(payload, request, FakeSession(task))
+    assert exc.value.status_code == 409
+
+
+def test_review_interface_requires_explicit_confirmation_and_preserves_key():
+    from pathlib import Path
+    js = (Path(__file__).resolve().parents[1] / "web" / "app.js").read_text(encoding="utf-8")
+    assert 'window.confirm("Registrar revisão auditável sem concluir a tarefa?")' in js
+    assert "control.dataset.reviewRequestId ||" in js
+    assert 'method: "POST"' in js
+    assert "justification.length < 15" in js
