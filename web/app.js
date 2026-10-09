@@ -225,8 +225,16 @@ async function checkCiReconciliation() {
         if (!window.confirm("Registrar revisão auditável sem concluir a tarefa?")) return;
         setButtonBusy(control, true, "Registrando…");
         try {
+          const auth = await api("/auth/status");
+          const csrfName = auth.csrf_cookie_name;
+          const csrfPair = document.cookie.split("; ").find((part) => part.startsWith(`${csrfName}=`));
+          const csrfToken = csrfPair ? decodeURIComponent(csrfPair.slice(csrfName.length + 1)) : "";
+          if (!auth.authenticated || !auth.auth_enabled || auth.role !== "admin" || !csrfToken) {
+            throw new Error("Sessão administrativa ou token CSRF indisponível.");
+          }
           await api("/ops/task-reconciliation/reviews", {
             method: "POST",
+            headers: { "x-csrf-token": csrfToken },
             body: JSON.stringify({
               request_id: control.dataset.reviewRequestId || (control.dataset.reviewRequestId = crypto.randomUUID()),
               task_id: taskId,
