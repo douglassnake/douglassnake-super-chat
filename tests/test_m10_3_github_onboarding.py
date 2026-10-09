@@ -175,6 +175,50 @@ def test_github_onboarding_requires_review_before_memory_changes(
         assert project_row.next_action == "Investigar falhas atuais de CI"
 
 
+
+def test_applying_onboarding_cannot_replace_existing_specific_next_action(
+    onboarding_client: tuple[TestClient, sessionmaker],
+) -> None:
+    client, _ = onboarding_client
+    project = client.post(
+        "/projects",
+        json={
+            "slug": "action-preserved",
+            "name": "Action preserved",
+            "next_action": "Validar o PR #38 do M3.2 antes de integrar",
+        },
+    ).json()
+    project_id = project["id"]
+
+    onboarding = client.post(
+        f"/projects/{project_id}/session-deltas",
+        json={
+            "session_key": "github-onboarding:test-specific-action",
+            "summary": "Snapshot histórico importado do GitHub.",
+            "next_action": "Revisar pull requests abertos",
+        },
+    )
+    assert onboarding.status_code == 201
+    applied = client.post(f"/session-deltas/{onboarding.json()['id']}/apply")
+    assert applied.status_code == 200
+    assert applied.json()["project_next_action"] == "Validar o PR #38 do M3.2 antes de integrar"
+
+    # A deliberate, manually reviewed non-onboarding delta still changes the action.
+    reviewed = client.post(
+        f"/projects/{project_id}/session-deltas",
+        json={
+            "session_key": "manual:action-review",
+            "summary": "Proxima etapa aprovada manualmente.",
+            "next_action": "Iniciar M3.3 apos revisao",
+        },
+    )
+    assert reviewed.status_code == 201
+    manual = client.post(f"/session-deltas/{reviewed.json()['id']}/apply")
+    assert manual.status_code == 200
+    assert manual.json()["project_next_action"] == "Iniciar M3.3 apos revisao"
+
+
+
 def test_github_onboarding_requires_active_source(onboarding_client: tuple[TestClient, sessionmaker]) -> None:
     client, _ = onboarding_client
     project_id = client.post(
