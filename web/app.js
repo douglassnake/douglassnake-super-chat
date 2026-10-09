@@ -199,7 +199,9 @@ async function checkCiReconciliation() {
         ${failureUrl ? `<a href="${escapeHtml(failureUrl)}" target="_blank" rel="noopener noreferrer">Falha original</a>` : ""}
         ${successUrl ? `<a href="${escapeHtml(successUrl)}" target="_blank" rel="noopener noreferrer">Execução posterior</a>` : ""}
       </div>`;
-    }).join("") : '<p class="muted">Nenhuma sugestão corroborada. Isso não comprova ausência de pendências.</p>';
+    }).join("") : (Array.isArray(data.diagnostics) && data.diagnostics.length
+      ? data.diagnostics.map((item) => `<div class="item-card"><strong>${escapeHtml(item.classification === "insufficient_evidence" ? "Evidência insuficiente" : "Sem tarefa de CI correspondente")}</strong><p>${escapeHtml(item.reason)}</p></div>`).join("")
+      : '<p class="muted">Nenhuma sugestão corroborada. Isso não comprova ausência de pendências.</p>');
   } catch (error) {
     if (state.selectedProjectId === projectId && state.reconciliationRequestId === requestId) target.textContent = `Não foi possível verificar: ${error.message}`;
   } finally {
