@@ -157,7 +157,13 @@ def apply_session_delta(db: Session, delta: SessionDelta) -> dict:
     if delta.status_change is not None:
         project.status = delta.status_change
     if delta.next_action is not None:
-        project.next_action = delta.next_action
+        # Onboarding offers a generic task as its next action. Never let that
+        # overwrite a specific action already maintained by the project owner.
+        # Other explicitly reviewed session deltas retain their existing behavior.
+        is_onboarding = delta.session_key.startswith("github-onboarding:")
+        has_existing_action = bool((project.next_action or "").strip())
+        if not (is_onboarding and has_existing_action):
+            project.next_action = delta.next_action
     project.last_activity_at = now
     project.updated_at = now
 
