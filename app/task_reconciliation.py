@@ -125,18 +125,33 @@ def collect_ci_reconciliation_hints(
                 (failure.metadata_json or {}).get("conclusion") or ""
             ).lower()
             if failure_conclusion not in FAILURE_CONCLUSIONS:
+                report["diagnostics"].append({
+                    "project_slug": project.slug, "task_id": str(task.id),
+                    "classification": "insufficient_evidence",
+                    "reason": "O evento vinculado à tarefa não comprova falha de CI.",
+                })
                 continue
             last = latest.get(identity)
-            if last is None or last.id == failure.id:
+            if last is None or last.id == failure.id or _aware(last.occurred_at) <= _aware(failure.occurred_at):
+                report["diagnostics"].append({
+                    "project_slug": project.slug, "task_id": str(task.id),
+                    "classification": "open",
+                    "reason": "Não existe execução posterior comparável no histórico sincronizado.",
+                })
                 continue
-            if _aware(last.occurred_at) <= _aware(failure.occurred_at):
+            if str((last.metadata_json or {}).get("conclusion") or "").lower() != "success" or str((last.metadata_json or {}).get("status") or "").lower() != "completed":
+                report["diagnostics"].append({
+                    "project_slug": project.slug, "task_id": str(task.id),
+                    "classification": "open",
+                    "reason": "A execução comparável mais recente não comprovou recuperação.",
+                })
                 continue
-            if str((last.metadata_json or {}).get("conclusion") or "").lower() != "success":
-                continue
-            if str((last.metadata_json or {}).get("status") or "").lower() != "completed":
-                continue
-            # Missing URLs must never produce a corroborated review suggestion.
             if not failure.url or not last.url:
+                report["diagnostics"].append({
+                    "project_slug": project.slug, "task_id": str(task.id),
+                    "classification": "insufficient_evidence",
+                    "reason": "A falha ou a execução posterior não possui URL verificável.",
+                })
                 continue
 
             report["suggestions"].append(
