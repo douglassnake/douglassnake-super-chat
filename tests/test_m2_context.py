@@ -163,6 +163,9 @@ def test_continue_project_builds_operational_context(context_client: tuple[TestC
     assert package["budget"]["estimated_tokens"] <= 5000
     assert package["items"]
     assert any(item["kind"] in {"summary", "decision", "task"} for item in package["items"])
+    # Preserve provenance so historical records are not mistaken for current status.
+    assert all("timestamp" in item for item in package["items"])
+    assert any(item["kind"] == "summary" and item["timestamp"] for item in package["items"])
 
     with SessionFactory() as db:
         audit_count = db.scalar(select(func.count(ContextRun.id)))

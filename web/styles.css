@@ -84,6 +84,11 @@ a { color: inherit; }
 .context-controls input, .context-controls select { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--text); background: #08131d; outline: none; }
 .context-controls input:focus, .context-controls select:focus { border-color: rgba(100,217,180,.48); }
 .context-result { margin-top: 14px; padding: 14px; border-radius: 14px; border: 1px solid rgba(109,168,255,.22); background: rgba(109,168,255,.05); }
+.context-current { padding: 12px; margin-bottom: 12px; border-radius: 10px; border: 1px solid rgba(102,214,187,.28); background: rgba(102,214,187,.06); }
+.context-current strong { display: block; margin-bottom: 6px; }
+.context-current p { margin: 0 0 6px; line-height: 1.5; white-space: pre-wrap; }
+.context-current small, .context-item small { display: block; color: var(--muted); font-size: .75rem; margin-top: 6px; }
+
 .context-budget { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; color: var(--muted); font-size: .76rem; }
 .context-item { padding: 10px 0; border-top: 1px solid var(--line); }
 .context-item:first-of-type { border-top: 0; }

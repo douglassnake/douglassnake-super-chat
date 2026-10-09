@@ -154,6 +154,7 @@ function renderDashboard(data) {
 
 async function loadDashboard({ preserveSelection = true } = {}) {
   const previous = preserveSelection ? state.selectedProjectId : null;
+  clearContextPreview();
   try {
     const data = await api("/dashboard");
     state.selectedProjectId = previous;
@@ -168,7 +169,17 @@ async function loadDashboard({ preserveSelection = true } = {}) {
   }
 }
 
+function clearContextPreview() {
+  const container = $("#context-result");
+  container.innerHTML = "";
+  container.classList.add("hidden");
+}
+
 async function selectProject(projectId) {
+  if (state.selectedProjectId !== projectId) {
+    clearContextPreview();
+    $("#context-query").value = "";
+  }
   state.selectedProjectId = projectId;
   if (state.dashboard) renderDashboard(state.dashboard);
   await loadOverview(projectId);
@@ -307,21 +318,27 @@ async function loadOverview(projectId) {
       api(`/projects/${encoded}/decisions`),
       api(`/projects/${encoded}/context-items`),
     ]);
+    // A slow response from a previously selected project must not
+    // overwrite the details of the newly selected project.
+    if (state.selectedProjectId !== projectId) return;
     renderOverview(overview, tasks, decisions, memories);
   } catch (error) {
+    if (state.selectedProjectId !== projectId) return;
     showToast(`Falha ao carregar projeto: ${error.message}`, true);
   }
 }
 
 async function continueProject() {
   if (!state.selectedProjectId) return;
+  const projectId = state.selectedProjectId;
   const button = $("#continue-button");
   setButtonBusy(button, true, "Montando contexto…");
   try {
     const profile = $("#context-profile").value;
     const query = $("#context-query").value.trim() || "continuar projeto status próxima ação decisões tarefas pendências bloqueios commits PR issues actions";
     const params = new URLSearchParams({ profile, query });
-    const packageData = await api(`/projects/${encodeURIComponent(state.selectedProjectId)}/continue?${params}`);
+    const packageData = await api(`/projects/${encodeURIComponent(projectId)}/continue?${params}`);
+    if (state.selectedProjectId !== projectId || packageData.project.id !== projectId) return;
     renderContext(packageData);
   } catch (error) {
     showToast(`Falha ao montar contexto: ${error.message}`, true);
@@ -333,7 +350,13 @@ async function continueProject() {
 function renderContext(data) {
   const container = $("#context-result");
   const budget = data.budget;
+  const project = data.project;
   container.innerHTML = `
+    <div class="context-current">
+      <strong>Cadastro atual · ${escapeHtml(project.name)}</strong>
+      <p>Próxima ação registrada: ${escapeHtml(project.next_action || "Não definida")}</p>
+      <small>Contexto gerado em ${shortDate(data.generated_at)}. Registros históricos abaixo não substituem o cadastro atual.</small>
+    </div>
     <div class="context-budget">
       <strong>${budget.estimated_tokens} / ${budget.max_tokens} tokens</strong>
       <span>${budget.selected_count} de ${budget.candidate_count} itens</span>
@@ -341,8 +364,9 @@ function renderContext(data) {
     </div>
     ${data.items.length ? data.items.map((item) => `
       <div class="context-item">
-        <strong>${escapeHtml(item.title || item.kind)} <span class="muted">· ${escapeHtml(item.kind)}</span></strong>
+        <strong>${escapeHtml(item.title || item.kind)} <span class="muted">· ${escapeHtml(item.kind)}${["summary", "status"].includes(item.kind) ? " · histórico" : ""}</span></strong>
         <p>${escapeHtml(item.content)}</p>
+        <small class="muted">Fonte: ${escapeHtml(item.source_type)} · ${item.timestamp ? shortDate(item.timestamp) : "sem data informada"}</small>
       </div>
     `).join("") : '<div class="context-item"><p>Nenhum item adicional selecionado.</p></div>'}
   `;
@@ -354,8 +378,10 @@ async function syncGithub() {
   const button = $("#github-sync-button");
   setButtonBusy(button, true, "Sincronizando…");
   try {
-    const result = await api(`/projects/${encodeURIComponent(state.selectedProjectId)}/github/sync`, { method: "POST" });
-    showToast(`${result.created_events} evento(s) novo(s) do GitHub.`);
+    const projectId = state.selectedProjectId;
+    const result = await api(`/projects/${encodeURIComponent(projectId)}/github/sync`, { method: "POST" });
+    if (state.selectedProjectId === projectId) clearContextPreview();
+    showToast(`${result.created_events} evento(s) novo(s) do GitHub. Clique em Continuar projeto para atualizar o contexto.`);
     await loadDashboard();
   } catch (error) {
     showToast(`Falha no GitHub: ${error.message}`, true);
