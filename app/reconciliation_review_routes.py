@@ -20,6 +20,7 @@ router = APIRouter(prefix="/ops/task-reconciliation", tags=["operations"])
 
 class ReviewRequest(BaseModel):
     task_id: UUID
+    request_id: UUID
     expected_updated_at: str = Field(min_length=10, max_length=60)
     decision: str = Field(pattern="^(keep_open|needs_investigation)$")
     justification: str = Field(min_length=15, max_length=4000)
@@ -45,6 +46,21 @@ def record_review(payload: ReviewRequest, request: Request, db: Session = Depend
     task = db.scalar(select(Task).where(Task.id == payload.task_id).with_for_update())
     if task is None or task.project_id is None:
         raise HTTPException(404, "Tarefa não encontrada")
+    existing = db.scalar(select(Event).where(
+        Event.project_id == task.project_id,
+        Event.event_type == "reconciliation.review",
+        Event.external_id == str(payload.request_id),
+    ))
+    if existing is not None:
+        metadata = existing.metadata_json or {}
+        if (metadata.get("task_id") != str(task.id)
+            or metadata.get("decision") != payload.decision
+            or existing.body != payload.justification
+            or metadata.get("evidence_urls") != payload.evidence_urls
+            or metadata.get("task_updated_at") != payload.expected_updated_at):
+            raise HTTPException(409, "Chave de revisão reutilizada com conteúdo diferente")
+        return {"review_id": str(existing.id), "task_id": str(task.id),
+                "decision": payload.decision, "changes_applied": 0}
     if task.status in {"done", "cancelled"}:
         raise HTTPException(409, "Tarefa já encerrada")
     try:
@@ -66,14 +82,14 @@ def record_review(payload: ReviewRequest, request: Request, db: Session = Depend
     event = Event(
         id=audit_id, project_id=task.project_id,
         source_type="manual", event_type="reconciliation.review",
-        external_id=str(audit_id),
+        external_id=str(payload.request_id),
         title="Revisão manual de tarefa de CI",
         body=payload.justification,
         occurred_at=utcnow(),
         metadata_json={
             "actor": principal["username"],
             "task_id": str(task.id), "task_status": task.status,
-            "task_updated_at": _normalize_time(task.updated_at).isoformat(),
+            "task_updated_at": payload.expected_updated_at,
             "decision": payload.decision,
             "evidence_urls": urls,
             "changes_applied": 0,
