@@ -56,3 +56,7 @@ Não deduzir classificação `resolved` só porque um PR foi merged ou um CI pas
 ## Condições para merge
 
 Testes Python e front-end, integração read-only, regressões M13.6, CI verde, revisão do diff, segurança de dados e autorização expressa. Implantação ZimaOS somente após aprovação separada, backup verificado e plano de rollback. A auditoria M14.5 permanece independente até o restore programado de 11/10/2026.
+
+## Componente preexistente identificado
+
+O arquivo `app/task_reconciliation.py` já está em `main` e implementa `collect_ci_reconciliation_hints(db, project_slug=None)` como avaliação somente leitura, limitada às tarefas intituladas `Investigar novas falhas de CI`. Ele compara repositório, workflow e branch das execuções associadas a eventos do GitHub e só sugere revisão após sucesso posterior. **A M13.7 não deve duplicar esse avaliador.** Revisar primeiro se há endpoint, testes, cobertura de casos adversos e frescor da sincronização. A implementação incremental deve partir desse componente e preservar `changes_applied: 0` nas consultas.
