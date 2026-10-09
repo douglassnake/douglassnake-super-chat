@@ -92,3 +92,57 @@ def test_reconciliation_requires_verifiable_evidence_urls():
     ).read_text(encoding="utf-8")
     assert "if not failure.url or not last.url:" in source
     assert '"changes_applied": 0' in source
+
+
+def test_ci_reconciliation_scenarios_with_isolated_fake_session(monkeypatch):
+    """Exercise the real evaluator against controlled event sequences."""
+    from types import SimpleNamespace
+    from app import task_reconciliation as module
+
+    project = SimpleNamespace(id=uuid4(), slug="radar-guarda-mor")
+    failure = _event(title="Action V5 validation: failure")
+    failure.url = "https://github.com/example/actions/runs/1"
+    failure.metadata_json["conclusion"] = "failure"
+    failure.metadata_json["status"] = "completed"
+    task = SimpleNamespace(
+        id=uuid4(),
+        project_id=project.id,
+        title="Investigar novas falhas de CI",
+        status="todo",
+        source_ref=f"event:{failure.id}",
+    )
+
+    class Results:
+        def __init__(self, records):
+            self.records = records
+        def all(self):
+            return self.records
+
+    class Session:
+        def __init__(self, runs):
+            self.runs = runs
+            self.calls = 0
+        def scalars(self, _statement):
+            self.calls += 1
+            return Results(([project], [task], self.runs)[(self.calls - 1) % 3])
+
+    def run(*, title="Action V5 validation: success", minutes=1, conclusion="success", url="https://github.com/example/actions/runs/2"):
+        from datetime import timedelta
+        result = _event(title=title)
+        result.occurred_at = failure.occurred_at + timedelta(minutes=minutes)
+        result.url = url
+        result.metadata_json.update({"status": "completed", "conclusion": conclusion})
+        return result
+
+    cases = [
+        ([failure, run()], 1),
+        ([failure, run(title="Action unrelated workflow: success")], 0),
+        ([failure, run(minutes=-1)], 0),
+        ([failure, run(conclusion="failure")], 0),
+        ([failure, run(url=None)], 0),
+        ([failure, run(), run(minutes=2, conclusion="failure")], 0),
+    ]
+    for events, expected in cases:
+        report = module.collect_ci_reconciliation_hints(Session(events), project_slug=project.slug)
+        assert report["suggestion_count"] == expected
+        assert report["changes_applied"] == 0
