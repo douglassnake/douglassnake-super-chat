@@ -61,9 +61,11 @@ def collect_ci_reconciliation_hints(
     )
     report: dict = {
         "mode": "check",
+        "message": "Consulta somente leitura. Ausência de sugestão não significa ausência de pendências.",
         "project_count": len(projects),
         "open_tasks_examined": 0,
         "ci_tasks_examined": 0,
+        "diagnostics": [],
         "suggestions": [],
         "changes_applied": 0,
     }
@@ -83,6 +85,7 @@ def collect_ci_reconciliation_hints(
         ]
         report["ci_tasks_examined"] += len(ci_tasks)
         if not ci_tasks:
+            report["diagnostics"].append({"project_slug": project.slug, "classification": "no_matching_task", "reason": "Nenhuma tarefa aberta de investigação de falhas de CI foi encontrada."})
             continue
 
         runs = list(
@@ -108,12 +111,15 @@ def collect_ci_reconciliation_hints(
         for task in ci_tasks:
             event_id = _source_event_id(task.source_ref)
             if event_id is None:
+                report["diagnostics"].append({"project_slug": project.slug, "task_id": str(task.id), "classification": "insufficient_evidence", "reason": "Tarefa sem referência de evento GitHub válida."})
                 continue
             failure = next((run for run in runs if run.id == event_id), None)
             if failure is None:
+                report["diagnostics"].append({"project_slug": project.slug, "task_id": str(task.id), "classification": "insufficient_evidence", "reason": "Evento de origem não está disponível no histórico sincronizado."})
                 continue
             identity = _workflow_identity(failure)
             if identity is None:
+                report["diagnostics"].append({"project_slug": project.slug, "task_id": str(task.id), "classification": "insufficient_evidence", "reason": "Workflow, repositório ou branch de origem não identificável."})
                 continue
             failure_conclusion = str(
                 (failure.metadata_json or {}).get("conclusion") or ""
@@ -147,12 +153,13 @@ def collect_ci_reconciliation_hints(
                     "success_run_url": last.url,
                     "success_at": _aware(last.occurred_at).isoformat(),
                     "caution": (
-                        "A later success in the same workflow and branch is a "
-                        "review signal, not proof that every failure tracked by "
-                        "this task is resolved. Confirm before closing manually."
+                        "Uma execução posterior aprovada no mesmo workflow e branch "
+                        "é apenas um indício para revisão. Confirme o escopo e os jobs "
+                        "antes de encerrar a tarefa manualmente."
                     ),
                 }
             )
 
     report["suggestion_count"] = len(report["suggestions"])
+    report["diagnostic_count"] = len(report["diagnostics"])
     return report
