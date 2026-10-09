@@ -154,6 +154,7 @@ function renderDashboard(data) {
 
 async function loadDashboard({ preserveSelection = true } = {}) {
   const previous = preserveSelection ? state.selectedProjectId : null;
+  clearContextPreview();
   try {
     const data = await api("/dashboard");
     state.selectedProjectId = previous;
