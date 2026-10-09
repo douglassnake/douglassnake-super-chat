@@ -82,3 +82,13 @@ def test_interface_invalidates_pending_requests():
     assert 'state.reconciliationRequestId += 1;' in js
     assert 'const failureUrl = safeUrl(entry.failure_run_url)' in js
     assert 'const successUrl = safeUrl(entry.success_run_url)' in js
+
+
+def test_reconciliation_requires_verifiable_evidence_urls():
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1] / "app" / "task_reconciliation.py"
+    ).read_text(encoding="utf-8")
+    assert "if not failure.url or not last.url:" in source
+    assert '"changes_applied": 0' in source
