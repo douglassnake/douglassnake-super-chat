@@ -175,9 +175,40 @@ function clearContextPreview() {
   container.classList.add("hidden");
 }
 
+async function checkCiReconciliation() {
+  const projectId = state.selectedProjectId;
+  const project = state.overview?.project;
+  if (!projectId || !project || project.id !== projectId) return;
+  const target = $("#reconciliation-results");
+  const button = $("#reconciliation-check-button");
+  target.textContent = "Consultando evidências registradas…";
+  setButtonBusy(button, true, "Verificando…");
+  try {
+    const data = await api(`/ops/task-reconciliation?project_slug=${encodeURIComponent(project.slug)}`);
+    if (state.selectedProjectId !== projectId) return;
+    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    target.innerHTML = suggestions.length ? suggestions.map((entry) => {
+      const failureUrl = safeUrl(entry.failure_run_url);
+      const successUrl = safeUrl(entry.success_run_url);
+      return `<div class="item-card">
+        <strong>${escapeHtml(entry.task_title || "Tarefa de CI")} · revisar evidências</strong>
+        <p>Workflow: ${escapeHtml(entry.workflow)} · Branch: ${escapeHtml(entry.branch)}</p>
+        <p>${escapeHtml(entry.caution || "Evidência posterior não autoriza encerramento automático.")}</p>
+        ${failureUrl ? `<a href="${escapeHtml(failureUrl)}" target="_blank" rel="noopener noreferrer">Falha original</a>` : ""}
+        ${successUrl ? `<a href="${escapeHtml(successUrl)}" target="_blank" rel="noopener noreferrer">Execução posterior</a>` : ""}
+      </div>`;
+    }).join("") : '<p class="muted">Nenhuma sugestão corroborada. Isso não comprova ausência de pendências.</p>';
+  } catch (error) {
+    if (state.selectedProjectId === projectId) target.textContent = `Não foi possível verificar: ${error.message}`;
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
 async function selectProject(projectId) {
   if (state.selectedProjectId !== projectId) {
     clearContextPreview();
+    $("#reconciliation-results").replaceChildren();
     $("#context-query").value = "";
   }
   state.selectedProjectId = projectId;
@@ -199,6 +230,8 @@ function renderOverview(data, tasks, decisions, memories) {
   $("#detail-name").textContent = project.name;
   $("#detail-description").textContent = project.description || `Atualizado em ${shortDate(project.updated_at)}`;
   $("#detail-next-action").textContent = project.next_action || "Não definida";
+  $("#reconciliation-results").replaceChildren();
+  $("#reconciliation-check-button").onclick = checkCiReconciliation;
 
   const ring = $("#detail-health");
   ring.textContent = health.score;
