@@ -124,3 +124,12 @@ def test_review_interface_requires_explicit_confirmation_and_preserves_key():
     assert "control.dataset.reviewRequestId ||" in js
     assert 'method: "POST"' in js
     assert "justification.length < 15" in js
+
+
+def test_review_frontend_supplies_production_csrf_header():
+    from pathlib import Path
+    js = (Path(__file__).resolve().parents[1] / "web" / "app.js").read_text(encoding="utf-8")
+    assert 'const auth = await api("/auth/status")' in js
+    assert "auth.csrf_cookie_name" in js
+    assert '"x-csrf-token": csrfToken' in js
+    assert 'auth.role !== "admin"' in js
